@@ -1,0 +1,20 @@
+{
+  "perDay": 5,
+  "peakValley": true,
+  "noon": true,
+  "night": true,
+  "autoComment": false,
+  "transcribe": false,
+  "asrModel": "small",
+  "keywords": [],
+  "commentPerRound": 1,
+  "mentionName": "你的B站昵称",
+  "pythonPath": "",
+  "dshBin": "",
+  "headlessProfile": "headless",
+  "overlayMcp": true,
+  "workspace": "",
+  "reportLevel": "full",
+  "replyToComments": false,
+  "replyPerRound": 0
+}

@@ -1,0 +1,14 @@
+comfyui_desktop:
+    base_path: D:/ComfyUI/models
+    is_default: true
+    diffusion_models: diffusion_models/
+    text_encoders: text_encoders/
+    vae: vae/
+    loras: loras/
+    checkpoints: checkpoints/
+    clip: clip/
+    clip_vision: clip_vision/
+    controlnet: controlnet/
+    upscale_models: upscale_models/
+    embeddings: embeddings/
+    unet: unet/

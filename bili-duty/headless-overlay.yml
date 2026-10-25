@@ -1,0 +1,26 @@
+- id: credentials
+  disabled: false
+
+- id: authorization
+  disabled: false
+
+- id: deepseek-account
+  disabled: false
+
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+    reasoningEffort: max
+
+- insert:
+    - id: mcp-bili-duty
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: bili-duty
+        transport: stdio
+        command: '<你的Python路径>'
+        args:
+          - '<项目路径>/bili-duty/mcp_server.py'
+        env:
+          BILI_MCP_TOOLS: 'bili_search,bili_subtitle,bili_comments,bili_video_info,bili_send_message'

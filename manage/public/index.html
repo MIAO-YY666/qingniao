@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>花开总控 · bloom-hub 管理平台</title>
+<style>
+  :root {
+    --bg: #0e1220; --panel: #161c2e; --panel2: #1c2338; --line: #2a3350;
+    --text: #dfe6f5; --muted: #8a94b5; --accent: #6ea8fe; --ok: #3ecf8e; --warn: #f5b544; --bad: #f06a6a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.65 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  header input { width: 210px; }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  nav button { background: transparent; color: var(--muted); border: 1px solid transparent; border-bottom: none; padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; }
+  nav button.active { background: var(--bg); color: var(--text); border-color: var(--line); }
+  main { padding: 18px; max-width: 1180px; margin: 0 auto; }
+  section { display: none; }
+  section.active { display: block; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .card .big { font-size: 17px; font-weight: 600; }
+  .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; margin-left: 6px; }
+  .b-ok { background: rgba(62,207,142,.15); color: var(--ok); }
+  .b-warn { background: rgba(245,181,68,.15); color: var(--warn); }
+  .b-bad { background: rgba(240,106,106,.15); color: var(--bad); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; font: inherit; outline: none;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  textarea.yaml { min-height: 420px; font-family: Consolas, monospace; font-size: 13px; }
+  textarea.pre { min-height: 260px; font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 180px; }
+  button.act { background: var(--accent); border: none; color: #0b1020; font-weight: 600; padding: 8px 18px; border-radius: 8px; cursor: pointer; margin-top: 12px; }
+  button.act.sec { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  button.act:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  a { color: var(--accent); text-decoration: none; }
+  .toast { position: fixed; right: 18px; bottom: 18px; background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; display: none; max-width: 420px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .switch { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .switch input { width: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>花开总控</h1>
+  <span class="sub">bloom-hub · QQ 桥接 + B站值班 统一管理</span>
+  <span class="spacer"></span>
+  <input id="token" type="password" placeholder="访问令牌（state/hub-token）">
+</header>
+<nav id="nav">
+  <button data-tab="overview" class="active">总览</button>
+  <button data-tab="duty">值班 · 刷B站</button>
+  <button data-tab="push">推送</button>
+  <button data-tab="persona">人格</button>
+  <button data-tab="bili">B站发布</button>
+  <button data-tab="qq">QQ发布</button>
+  <button data-tab="comfy">生图</button>
+  <button data-tab="mem">记忆</button>
+  <button data-tab="llm">模型·密钥</button>
+  <button data-tab="logs">日志</button>
+</nav>
+<main>
+
+<!-- ================= 总览 ================= -->
+<section id="tab-overview" class="active">
+  <div class="cards" id="ov-cards"></div>
+  <div class="panel">
+    <h2>组件状态</h2>
+    <div id="ov-detail" class="kv">加载中…</div>
+    <div class="hint">QQ 聊天深度设置（模式/白名单/社交参数/黑话/表情）仍在桥接控制台：<a id="link-console" href="#" target="_blank">打开 :3100 控制台</a></div>
+  </div>
+  <div class="panel">
+    <h2>这套系统在干什么</h2>
+    <div class="kv">
+      <div class="k">谷时刷B站</div><div>值班轮在谷时窗口自动搜片、读字幕、写日报、评论区 @<span id="ov-mention"></span></div>
+      <div class="k">谷时 QQ 推送</div><div>日报写完 → 本平台自动把摘要私聊推给你（峰时产生的会在下个谷时窗口补发）</div>
+      <div class="k">全天候回复</div><div>你随时发 QQ 消息，她都会回——回复链路不受峰谷窗口限制</div>
+      <div class="k">统一人格</div><div>QQ 聊天、B站评论、日报、推送共用 config/persona.yaml 一套语气与红线</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 值班 ================= -->
+<section id="tab-duty">
+  <div class="panel">
+    <h2>值班配置 <span class="hint" style="display:inline">（保存后下一轮值班生效；值班轮由 DSH 调度）</span></h2>
+    <div class="row">
+      <div><label>每天定量（条）</label><input id="d-perDay" type="number" min="1" max="20"></div>
+      <div><label>@ 谁（B站名）</label><input id="d-mention" type="text"></div>
+      <div><label>每轮评论上限</label><input id="d-cpr" type="number" min="0" max="10"></div>
+      <div><label>每轮回复上限</label><input id="d-rpr" type="number" min="0" max="10"></div>
+    </div>
+    <div class="row">
+      <div><label>关注关键词（逗号分隔，留空用默认）</label><input id="d-keywords" type="text"></div>
+    </div>
+    <div class="switch"><input id="d-peakValley" type="checkbox"><label style="margin:0">峰谷模式（只在谷时窗口跑）</label></div>
+    <div class="switch"><input id="d-noon" type="checkbox"><label style="margin:0">午间窗口</label></div>
+    <div class="switch"><input id="d-night" type="checkbox"><label style="margin:0">深夜窗口</label></div>
+    <div class="switch"><input id="d-autoComment" type="checkbox"><label style="margin:0">自动评论并 @（关闭则只写报告）</label></div>
+    <div class="switch"><input id="d-replyToComments" type="checkbox"><label style="margin:0">回复评论区（只回自己评论楼下）</label></div>
+    <button class="act" id="d-save">保存值班配置</button>
+  </div>
+  <div class="panel">
+    <h2>值班状态</h2>
+    <div id="d-state" class="kv"></div>
+  </div>
+  <div class="panel">
+    <h2>日报列表</h2>
+    <table id="d-reports"><thead><tr><th>日期</th><th>操作</th></tr></thead><tbody></tbody></table>
+    <div class="hint">选一份查看：</div>
+    <textarea id="d-view" class="pre" placeholder="点上面「查看」载入日报全文"></textarea>
+  </div>
+  <div class="panel">
+    <h2>判重表（seen.md 末尾）</h2>
+    <textarea id="d-seen" class="pre" readonly></textarea>
+  </div>
+</section>
+
+<!-- ================= 推送 ================= -->
+<section id="tab-push">
+  <div class="panel">
+    <h2>推送配置</h2>
+    <div class="row">
+      <div><label>推送目标 QQ</label><input id="p-target" type="text"></div>
+      <div><label>单条上限（字）</label><input id="p-max" type="number" min="500" max="4000"></div>
+      <div><label>摘要条数</label><input id="p-items" type="number" min="1" max="10"></div>
+    </div>
+    <div class="switch"><input id="p-enabled" type="checkbox"><label style="margin:0">启用推送</label></div>
+    <div class="switch"><input id="p-onlyvalley" type="checkbox"><label style="margin:0">仅谷时推送（峰时生成 → 下个谷时窗口补发）</label></div>
+    <div class="switch"><input id="p-catchup" type="checkbox"><label style="margin:0">启动补查（重启后补发未推送的最新日报）</label></div>
+    <button class="act" id="p-save">保存推送配置</button>
+  </div>
+  <div class="panel">
+    <h2>推送状态</h2>
+    <div id="p-status" class="kv"></div>
+    <button class="act" id="p-now">立即推送最新日报</button>
+  </div>
+  <div class="panel">
+    <h2>推送记录</h2>
+    <table id="p-history"><thead><tr><th>时间</th><th>类型</th><th>日报</th><th>说明</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<!-- ================= 人格 ================= -->
+<section id="tab-persona">
+  <div class="panel">
+    <h2>统一人格（config/persona.yaml）</h2>
+    <div class="hint">这里是「她」的唯一定义：QQ 聊天角色卡、B站值班语气、日报推送口吻、硬边界，全部从这里编译下发。改完先「保存」，再按需「同步」。</div>
+    <textarea id="pr-yaml" class="yaml" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="act" id="pr-save">保存人格</button>
+      <button class="act sec" id="pr-apply-duty">同步到 B站值班（duty/AGENTS.md）</button>
+      <button class="act sec" id="pr-apply-qq">同步到 QQ（生成角色卡）</button>
+      <button class="act sec" id="pr-apply-qq-cur">同步到 QQ 并设为当前人格</button>
+    </div>
+    <div class="hint" id="pr-note"></div>
+  </div>
+</section>
+
+<!-- ================= B站发布 ================= -->
+<section id="tab-bili">
+  <div class="panel">
+    <h2>登录凭据</h2>
+    <div id="b-cred" class="kv">点「检查凭据」查询。</div>
+    <button class="act sec" id="b-checkcred">检查凭据</button>
+  </div>
+  <div class="panel">
+    <h2>发动态（支持图片，最多 9 张）</h2>
+    <label>动态内容</label>
+    <textarea id="b-dyn-text" placeholder="支持 @ 和 B站表情码如 [doge]"></textarea>
+    <label>图片（本地路径或 URL，每行一个，可留空）</label>
+    <textarea id="b-dyn-img" style="min-height:70px" placeholder="D:\pics\a.png&#10;https://..."></textarea>
+    <button class="act" id="b-dyn-send">发布动态</button>
+  </div>
+  <div class="panel">
+    <h2>发图文（Opus 专栏）</h2>
+    <label>标题</label><input id="b-opus-title" type="text">
+    <label>正文（段落用换行分隔）</label>
+    <textarea id="b-opus-content"></textarea>
+    <label>插图（每行一个，可留空）</label>
+    <textarea id="b-opus-img" style="min-height:60px"></textarea>
+    <button class="act" id="b-opus-send">发布图文</button>
+  </div>
+  <div class="panel">
+    <h2>定时日报动态（可选）</h2>
+    <div class="hint">每天到点后，把当天值班日报自动转成一条B站动态发出（只发一次）。</div>
+    <div class="row">
+      <div><label>每天发布时间</label><input id="b-ap-time" type="text" placeholder="12:45"></div>
+    </div>
+    <div class="switch"><input id="b-ap-enabled" type="checkbox"><label style="margin:0">启用定时日报动态</label></div>
+    <button class="act" id="b-ap-save">保存定时发布设置</button>
+  </div>
+</section>
+
+<!-- ================= QQ发布 ================= -->
+<section id="tab-qq">
+  <div class="panel">
+    <h2>能力面板 <span class="hint" style="display:inline">（经 SnowLuma OneBot 协议端）</span></h2>
+    <div id="q-caps">加载中…</div>
+  </div>
+  <div class="panel">
+    <h2>名片赞</h2>
+    <div class="row">
+      <div><label>QQ 号</label><input id="q-like-qq" type="text"></div>
+      <div><label>次数（1-50）</label><input id="q-like-times" type="number" value="10" min="1" max="50"></div>
+    </div>
+    <button class="act" id="q-like-send">送赞</button>
+  </div>
+  <div class="panel">
+    <h2>群公告</h2>
+    <div class="row">
+      <div><label>群号</label><input id="q-notice-group" type="text"></div>
+    </div>
+    <label>公告内容</label><textarea id="q-notice-content"></textarea>
+    <button class="act" id="q-notice-send">发群公告</button>
+  </div>
+  <div class="panel">
+    <h2>发说说 / 空间</h2>
+    <div class="hint">⚠️ SnowLuma 1.14.15 的 OneBot 协议端没有提供说说/Qzone 接口——这是协议端能力缺口，不是这里的配置问题。协议端更新支持后，本面板会自动接入。目前可以用「名片赞 + 群公告」作为轻量替代。</div>
+    <button class="act sec" id="q-mood-try" disabled>发说说（当前不可用）</button>
+  </div>
+</section>
+
+<!-- ================= 生图 ================= -->
+<section id="tab-comfy">
+  <div class="panel">
+    <h2>本地生图（ComfyUI · Qwen-Image 2.1）</h2>
+    <div id="cf-status" class="kv">加载中…</div>
+    <button class="act sec" id="cf-refresh">刷新状态</button>
+  </div>
+  <div class="panel">
+    <h2>生成并发送</h2>
+    <label>画面描述</label>
+    <textarea id="cf-prompt" placeholder="例如：一只蓝色小鲸鱼在云端睡觉，吉卜力风格"></textarea>
+    <div class="row">
+      <div><label>负面提示（可空）</label><input id="cf-neg" type="text" placeholder="模糊、低质量"></div>
+      <div><label>宽 × 高</label><input id="cf-size" type="text" value="1024x1024"></div>
+      <div><label>发送给 QQ</label><input id="cf-to" type="text" value=""></div>
+    </div>
+    <button class="act" id="cf-gen">生成并发送（发送后自动删文件）</button>
+    <div class="hint" id="cf-note"></div>
+  </div>
+  <div class="panel">
+    <h2>模型库</h2>
+    <div id="cf-models" class="kv"></div>
+  </div>
+</section>
+
+<!-- ================= 记忆 ================= -->
+<section id="tab-mem">
+  <div class="panel">
+    <h2>人向记忆 <span class="hint" style="display:inline">（她在 QQ/B站 与人互动的长期印象；一人一文件，自动备份到项目外）</span></h2>
+    <div class="hint" id="m-paths"></div>
+    <table id="m-list"><thead><tr><th>身份</th><th>显示名</th><th>平台</th><th>印象数</th><th>更新时间</th><th>操作</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="panel">
+    <h2>关联身份（跨平台打通）</h2>
+    <div class="hint">同一个人的 QQ 号和 B站号关联后，两边记忆合并：QQ 聊天时她记得B站推了什么，B站值班时她也认得 QQ 里聊过的人。她自己在对话中得知身份时也会自动调 memory_link。</div>
+    <div class="row">
+      <div><label>身份 A（如 qq-10000）</label><input id="m-link-a" type="text"></div>
+      <div><label>身份 B（如 bili-某UP主）</label><input id="m-link-b" type="text"></div>
+      <div><label>显示名（可选）</label><input id="m-link-name" type="text"></div>
+    </div>
+    <button class="act sec" id="m-link">关联</button>
+  </div>
+  <div class="panel">
+    <h2>查看 / 编辑</h2>
+    <div class="row">
+      <div><label>记忆 key（qq-<QQ号> / group-<群号> / bili-<UID或昵称>）</label><input id="m-key" type="text"></div>
+      <div><label>显示名</label><input id="m-name" type="text"></div>
+    </div>
+    <label>印象内容（追加一条）</label>
+    <textarea id="m-text" style="min-height:60px" placeholder="例如：喜欢深夜聊天，对插件安全话题敏感"></textarea>
+    <div class="row">
+      <button class="act" id="m-add">追加印象</button>
+      <button class="act sec" id="m-load">读取这份记忆</button>
+      <button class="act sec" id="m-del-person">删除整份记忆</button>
+    </div>
+    <textarea id="m-view" class="pre" readonly placeholder="点「读取这份记忆」或在上面列表点「查看」"></textarea>
+  </div>
+</section>
+
+<!-- ================= 模型·密钥 ================= -->
+<section id="tab-llm">
+  <div class="panel">
+    <h2>统一 API 密钥</h2>
+    <div class="hint">QQ 聊天、B站值班都用 DeepSeek 官方通道，密钥统一存在 DSH 凭据里（DEEPSEEK_API_KEY）。这里改，两边共用；每次修改自动把原凭据备份到项目外。</div>
+    <div id="l-current" class="kv"></div>
+    <label>新的 API Key（sk- 开头；留空表示不修改）</label>
+    <input id="l-key" type="password" placeholder="sk-...">
+    <label>默认模型（桥接会话用；留空表示不修改）</label>
+    <input id="l-model" type="text" placeholder="deepseek-v4-flash-vision-exp">
+    <button class="act" id="l-save">保存</button>
+    <div class="hint" id="l-note"></div>
+  </div>
+</section>
+
+<!-- ================= 日志 ================= -->
+<section id="tab-logs">
+  <div class="panel">
+    <h2>平台日志（logs/hub.log 末尾）</h2>
+    <textarea id="l-tail" class="pre" readonly></textarea>
+    <button class="act sec" id="l-refresh">刷新</button>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let TOKEN = localStorage.getItem('bloomhub-token') || '';
+// 支持 URL 锚点带入令牌：http://IP:3160/#<token> （手机一键登录用）
+if (location.hash && location.hash.length > 1) {
+  const t = decodeURIComponent(location.hash.slice(1));
+  if (t && t !== TOKEN) { TOKEN = t; localStorage.setItem('bloomhub-token', t); }
+  history.replaceState(null, '', location.pathname);
+}
+$('token').value = TOKEN;
+if (!TOKEN) {
+  const b = document.createElement('div');
+  b.className = 'hint';
+  b.style.cssText = 'background:rgba(245,181,68,.15);padding:8px 12px;border-radius:8px;margin:8px 0';
+  b.innerHTML = '⚠ 未配置访问令牌：数据会全部 401。请把 <b>state/hub-token</b> 里的令牌填到右上角输入框（或在网址后加 <b>#令牌</b> 一次性带入）。';
+  document.querySelector('nav').after(b);
+}
+$('token').addEventListener('change', () => { TOKEN = $('token').value.trim(); localStorage.setItem('bloomhub-token', TOKEN); location.reload(); });
+
+function toast(msg, ms = 3200) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = 'none'; }, ms);
+}
+async function api(path, opts = {}) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(path + sep + 'token=' + encodeURIComponent(TOKEN), {
+    method: opts.method || 'GET',
+    headers: { 'content-type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  let data = {};
+  try { data = await res.json(); } catch { /* ignore */ }
+  if (res.status === 401) { toast('未授权：请填入管理平台访问令牌'); throw new Error('401'); }
+  if (!res.ok && !opts.allowError) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const badge = (up, okText, badText) => up ? `<span class="badge b-ok">${okText || '在线'}</span>` : `<span class="badge b-bad">${badText || '离线'}</span>`;
+
+// ---------- 页签 ----------
+$('nav').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('main section').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
+  if (btn.dataset.tab === 'overview') loadOverview();
+  if (btn.dataset.tab === 'duty') loadDuty();
+  if (btn.dataset.tab === 'push') loadPush();
+  if (btn.dataset.tab === 'persona') loadPersona();
+  if (btn.dataset.tab === 'bili') loadBili();
+  if (btn.dataset.tab === 'qq') loadQq();
+  if (btn.dataset.tab === 'logs') loadLogs();
+  if (btn.dataset.tab === 'comfy') loadComfy();
+  if (btn.dataset.tab === 'mem') loadMemory();
+  if (btn.dataset.tab === 'llm') loadLlm();
+});
+
+// ---------- 生图 ----------
+async function loadComfy() {
+  try {
+    const d = await api('/api/comfy/status');
+    const m = d.models || {};
+    const mLines = Object.entries(m).map(([k, v]) => '<div class="k">' + esc(k) + '</div><div>' + esc(v.join('、')) + '</div>').join('') || '<div class="k">（无）</div><div></div>';
+    $('cf-status').innerHTML = '<div class="k">ComfyUI</div><div>' + (d.up ? '运行中 ✓' : '未运行（生成时会自动拉起）') + '</div>'
+      + '<div class="k">模型目录</div><div>' + esc(d.modelsDir) + '</div>'
+      + '<div class="k">下载任务</div><div>' + ((d.downloads || []).filter((x) => x.status === 'downloading').length) + ' 个进行中</div>';
+    $('cf-models').innerHTML = mLines;
+  } catch (e) { toast('状态加载失败：' + e.message); }
+}
+$('cf-refresh').addEventListener('click', loadComfy);
+$('cf-gen').addEventListener('click', async () => {
+  const wh = $('cf-size').value.split('x').map((s) => parseInt(s.trim()));
+  const w = wh[0] || 1024, hh = wh[1] || 1024;
+  $('cf-note').textContent = '生成中…（ComfyUI 首次启动可能 1-2 分钟，生成约 1-3 分钟）';
+  try {
+    const r = await api('/api/comfy/generate', { method: 'POST', body: { prompt: $('cf-prompt').value, negative: $('cf-neg').value, width: w, height: hh, sendTo: Number($('cf-to').value) || null } });
+    $('cf-note').textContent = r.sent ? '✓ 已生成并发送（本地文件已删除）' : ('已生成但未发送：' + (r.file || ''));
+    toast(r.sent ? '图片已发送' : '生成完成（未发送）');
+  } catch (e) { $('cf-note').textContent = '失败：' + e.message; toast('生成失败：' + e.message); }
+});
+
+// ---------- 记忆 ----------
+let memCache = [];
+async function loadMemory() {
+  try {
+    const d = await api('/api/memory');
+    $('m-paths').textContent = `存储：${d.storage}　备份：${d.backup}`;
+    memCache = d.people || [];
+    $('m-list').querySelector('tbody').innerHTML = memCache.map((p, i) =>
+      `<tr><td>${esc(p.key)}</td><td>${esc(p.displayName || '')}</td><td>${esc(p.platform || '')}</td><td>${(p.impressions || []).length}</td><td>${esc((p.updatedAt || '').slice(0, 16).replace('T', ' '))}</td><td><a href="#" onclick="memFill('${esc(p.key)}');return false;">查看</a></td></tr>`).join('')
+      || '<tr><td colspan="6">还没有任何记忆</td></tr>';
+  } catch (e) { toast('记忆加载失败：' + e.message); }
+}
+window.memFill = (key) => {
+  $('m-key').value = key;
+  memRead();
+};
+function renderMemory(p) {
+  if (!p) { $('m-view').value = '（没有这份记忆）'; return; }
+  const lines = (p.impressions || []).map((x, i) => `${i}. [${(x.at || '').slice(0, 10)}|${x.source}] ${x.text}`);
+  $('m-view').value = `【${p.displayName || p.key}】key=${p.key} 平台=${p.platform || '未知'}\n${lines.join('\n') || '（暂无印象）'}`;
+}
+async function memRead() {
+  const key = $('m-key').value.trim();
+  if (!key) { toast('先填记忆 key'); return; }
+  const p = memCache.find((x) => x.key === key) || null;
+  renderMemory(p);
+  $('m-name').value = p?.displayName || '';
+}
+$('m-load').addEventListener('click', memRead);
+$('m-add').addEventListener('click', async () => {
+  try {
+    await api('/api/memory', { method: 'POST', body: { action: 'add', key: $('m-key').value.trim(), text: $('m-text').value, displayName: $('m-name').value.trim() } });
+    toast('已追加印象');
+    $('m-text').value = '';
+    loadMemory(); memRead();
+  } catch (e) { toast('失败：' + e.message); }
+});
+$('m-del-person').addEventListener('click', async () => {
+  const key = $('m-key').value.trim();
+  if (!key || !confirm(`确定删除 ${key} 的全部记忆？`)) return;
+  try {
+    await api('/api/memory', { method: 'POST', body: { action: 'forget', key } });
+    toast('已删除');
+    loadMemory();
+  } catch (e) { toast('失败：' + e.message); }
+});
+$('m-link').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/memory', { method: 'POST', body: { action: 'link', keyA: $('m-link-a').value.trim(), keyB: $('m-link-b').value.trim(), displayName: $('m-link-name').value.trim() } });
+    toast('已关联：' + (r.result?.identities || []).join(' ↔ '));
+    loadMemory();
+  } catch (e) { toast('失败：' + e.message); }
+});
+
+// ---------- 模型·密钥 ----------
+async function loadLlm() {
+  try {
+    const d = await api('/api/llm-config');
+    $('l-current').innerHTML = `
+      <div class="k">当前密钥</div><div>${esc(d.apiKeyMasked || '未设置')}</div>
+      <div class="k">provider</div><div>${esc(d.provider || '—')}</div>
+      <div class="k">桥接默认模型</div><div>${esc(d.model || '—')}</div>
+      <div class="k">凭据文件</div><div>${esc(d.credFile)}</div>`;
+  } catch (e) { toast('加载失败：' + e.message); }
+}
+$('l-save').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/llm-config', { method: 'POST', body: { apiKey: $('l-key').value.trim(), model: $('l-model').value.trim() } });
+    $('l-note').textContent = (r.notes || []).join('；') + '　' + (r.hint || '');
+    $('l-key').value = '';
+    toast('已保存');
+    loadLlm();
+  } catch (e) { toast('失败：' + e.message); }
+});
+
+// ---------- 日志 ----------
+
+// ---------- 总览 ----------
+async function loadOverview() {
+  try {
+    const d = await api('/api/overview');
+    const v = d.valley;
+    const valleyText = v.inValley
+      ? `谷时中 · ${esc(v.window ? v.window.label : '')}`
+      : `峰时 · 下个谷窗 ${v.nextWindowStartAt ? v.nextWindowStartAt.slice(5, 16).replace('T', ' ') : '—'}`;
+    const cards = [
+      ['峰谷状态', valleyText, v.inValley ? 'b-ok' : 'b-warn'],
+      ['QQ 桥接（core）', d.bridge.up ? `运行中${d.bridge.mode ? ' · ' + esc(d.bridge.mode) : ''}` : '未运行', d.bridge.up ? 'b-ok' : 'b-bad'],
+      ['SnowLuma 网关', d.gateway.online ? `在线${d.gateway.loginNickname ? ' · ' + esc(d.gateway.loginNickname) : ''}` : '离线', d.gateway.online ? 'b-ok' : 'b-bad'],
+      ['DSH Harness', d.dsh.up ? '在线' : '离线', d.dsh.up ? 'b-ok' : 'b-bad'],
+      ['全天候回复', d.alwaysReply ? '开（峰谷不限）' : '关', d.alwaysReply ? 'b-ok' : 'b-bad'],
+      ['值班最近一轮', d.duty.lastRunAt ? `${esc(d.duty.lastRunAt.slice(5, 16).replace('T', ' '))} · ${esc(d.duty.lastWhy || '')}` : '还没有记录', 'b-warn']
+    ];
+    $('ov-cards').innerHTML = cards.map(([t, v2, c]) =>
+      `<div class="card"><h3>${t}</h3><div class="big">${v2} <span class="badge ${c}">●</span></div></div>`).join('');
+    $('ov-detail').innerHTML = `
+      <div class="k">机器人 QQ</div><div>${d.identity.botQQ}（${esc(d.identity.botName)}）</div>
+      <div class="k">推送目标</div><div>${d.identity.pushTargetQQ}</div>
+      <div class="k">谷时窗口</div><div>${v.windows.map((w) => `${esc(w.label)} ${w.start}~${w.end}`).join('　')}</div>
+      <div class="k">桥接模式/人格</div><div>${esc(d.bridge.mode || '—')} / ${esc(d.bridge.role || '默认')}</div>
+      <div class="k">DSH 可用</div><div>${d.bridge.dshReady === true ? '是' : (d.bridge.dshReady === false ? '否' : '—')}</div>`;
+    $('ov-mention').textContent = d.identity.biliMentionName || '';
+    const port = d.bridge.port || 3100;
+    $('link-console').href = `http://127.0.0.1:${port}/?token=` + encodeURIComponent(TOKEN);
+  } catch (e) { toast('总览加载失败：' + e.message); }
+}
+
+// ---------- 值班 ----------
+let dutyReports = [];
+async function loadDuty() {
+  try {
+    const d = await api('/api/duty/status');
+    const c = d.config || {};
+    $('d-perDay').value = c.perDay ?? 5;
+    $('d-mention').value = c.mentionName ?? '';
+    $('d-cpr').value = c.commentPerRound ?? 1;
+    $('d-rpr').value = c.replyPerRound ?? 1;
+    $('d-keywords').value = (c.keywords || []).join(', ');
+    $('d-peakValley').checked = !!c.peakValley;
+    $('d-noon').checked = !!c.noon;
+    $('d-night').checked = !!c.night;
+    $('d-autoComment').checked = !!c.autoComment;
+    $('d-replyToComments').checked = !!c.replyToComments;
+    const s = d.state || {};
+    $('d-state').innerHTML = `
+      <div class="k">今天已跑</div><div>${s.count ?? 0} 轮</div>
+      <div class="k">最近运行</div><div>${esc(s.lastRunAt || '—')}（${esc(s.lastWhy || '')}）</div>
+      <div class="k">窗口记录</div><div>${Object.keys(s.windows || {}).length} 个窗口已跑</div>`;
+    dutyReports = d.reports || [];
+    $('d-reports').querySelector('tbody').innerHTML = dutyReports.slice(0, 14).map((r) =>
+      `<tr><td>${r}</td><td><a href="#" onclick="viewReport('${r}');return false;">查看</a></td></tr>`).join('');
+    $('d-seen').value = d.seenTail || '';
+    // 同步定时动态开关
+    const ap = d.autoDigestDynamic || {};
+    $('b-ap-time').value = ap.time || '12:45';
+    $('b-ap-enabled').checked = !!ap.enabled;
+  } catch (e) { toast('值班状态加载失败：' + e.message); }
+}
+window.viewReport = async (date) => {
+  try {
+    const d = await api('/api/duty/report?date=' + date);
+    $('d-view').value = d.md;
+  } catch (e) { toast('日报载入失败：' + e.message); }
+};
+$('d-save').addEventListener('click', async () => {
+  try {
+    await api('/api/duty/config', { method: 'POST', body: {
+      perDay: Number($('d-perDay').value) || 5,
+      mentionName: $('d-mention').value.trim(),
+      commentPerRound: Number($('d-cpr').value) || 0,
+      replyPerRound: Number($('d-rpr').value) || 0,
+      keywords: $('d-keywords').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+      peakValley: $('d-peakValley').checked,
+      noon: $('d-noon').checked,
+      night: $('d-night').checked,
+      autoComment: $('d-autoComment').checked,
+      replyToComments: $('d-replyToComments').checked
+    }});
+    toast('值班配置已保存，下一轮值班生效');
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+
+// ---------- 推送 ----------
+async function loadPush() {
+  try {
+    const s = await api('/api/push/status');
+    const cfg = await api('/api/schedule');
+    $('p-target').value = cfg.push?.target ?? '';
+    $('p-max').value = cfg.push?.maxChars ?? 2800;
+    $('p-items').value = cfg.push?.itemsInDigest ?? 5;
+    $('p-enabled').checked = s.enabled;
+    $('p-onlyvalley').checked = s.onlyInValley;
+    $('p-catchup').checked = !!cfg.push?.catchUp;
+    $('p-status').innerHTML = `
+      <div class="k">当前时段</div><div>${s.inValley ? '谷时' + (s.window ? '（' + esc(s.window.label) + '）' : '') : '峰时（推送会等待谷窗）'}</div>
+      <div class="k">下个谷窗</div><div>${esc(s.nextWindowStartAt ? s.nextWindowStartAt.slice(5, 16).replace('T', ' ') : '—')}</div>
+      <div class="k">待补发队列</div><div>${s.queue.length ? esc(s.queue.join(', ')) : '空'}</div>
+      <div class="k">最近日报</div><div>${esc(s.reports.slice(0, 5).join(', ') || '—')}</div>`;
+    $('p-history').querySelector('tbody').innerHTML = (s.history || []).map((h) =>
+      `<tr><td>${esc((h.at || '').slice(5, 19).replace('T', ' '))}</td><td>${esc(h.kind)}</td><td>${esc(h.date || '')}</td><td>${esc(h.error || (h.parts ? h.parts + ' 段' : ''))}</td></tr>`).join('') || '<tr><td colspan="4">还没有推送记录</td></tr>';
+  } catch (e) { toast('推送状态加载失败：' + e.message); }
+}
+$('p-save').addEventListener('click', async () => {
+  try {
+    await api('/api/schedule', { method: 'POST', body: {
+      pushTargetQQ: $('p-target').value.trim(),
+      push: {
+        enabled: $('p-enabled').checked,
+        onlyInValley: $('p-onlyvalley').checked,
+        catchUp: $('p-catchup').checked,
+        maxChars: Number($('p-max').value) || 2800,
+        itemsInDigest: Number($('p-items').value) || 5
+      }
+    }});
+    toast('推送配置已保存');
+    loadPush();
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+$('p-now').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/push/now', { method: 'POST', body: {} });
+    toast(`已推送 ${r.date}（${r.parts} 段）`);
+    loadPush();
+  } catch (e) { toast('推送失败：' + e.message); }
+});
+
+// ---------- 人格 ----------
+async function loadPersona() {
+  try {
+    const d = await api('/api/persona');
+    $('pr-yaml').value = d.yaml;
+  } catch (e) { toast('人格加载失败：' + e.message); }
+}
+$('pr-save').addEventListener('click', async () => {
+  try {
+    await api('/api/persona', { method: 'POST', body: { yaml: $('pr-yaml').value } });
+    toast('人格已保存（生效范围见下方同步按钮）');
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+$('pr-apply-duty').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/persona/apply', { method: 'POST', body: { to: ['duty'] } });
+    $('pr-note').textContent = `已同步到值班（duty/AGENTS.md 写入${r.dutyAgentsMd ? '成功' : '失败'}），下一轮值班生效。`;
+    toast('已同步到B站值班');
+  } catch (e) { toast('同步失败：' + e.message); }
+});
+async function applyQq(setCurrent) {
+  try {
+    const r = await api('/api/persona/apply', { method: 'POST', body: { to: ['qq'], setAsCurrent: setCurrent } });
+    $('pr-note').textContent = `已生成角色卡 roles/${r.qqRoleCard}.md` + (setCurrent ? `，并已把 current-role.json 指向它（桥接重载后生效；可在 QQ 里发 /role 验证）。` : `（未切换当前人格）。`);
+    toast('已同步到 QQ 桥接');
+  } catch (e) { toast('同步失败：' + e.message); }
+}
+$('pr-apply-qq').addEventListener('click', () => applyQq(false));
+$('pr-apply-qq-cur').addEventListener('click', () => applyQq(true));
+
+// ---------- B站发布 ----------
+async function loadBili() {
+  try {
+    const d = await api('/api/duty/status');
+    const ap = d.autoDigestDynamic || {};
+    $('b-ap-time').value = ap.time || '12:45';
+    $('b-ap-enabled').checked = !!ap.enabled;
+  } catch { /* ignore */ }
+}
+$('b-checkcred').addEventListener('click', async () => {
+  $('b-cred').textContent = '检查中…';
+  try {
+    const r = await api('/api/bili/cred', { method: 'GET', allowError: true });
+    if (r.ok) {
+      const c = r.credential || {};
+      const ok = c.valid ?? c.logged_in ?? c;
+      $('b-cred').innerHTML = `<div class="k">状态</div><div>${typeof ok === 'boolean' ? (ok ? '有效' : '已失效') : esc(JSON.stringify(c))}</div>`;
+      if (typeof ok !== 'boolean') $('b-cred').textContent = JSON.stringify(c, null, 2);
+    } else {
+      $('b-cred').innerHTML = `<div class="k">错误</div><div>${esc(r.error || '未知')}</div>`;
+    }
+  } catch (e) { $('b-cred').textContent = '查询失败：' + e.message; }
+});
+const imgList = (id) => $(id).value.split('\n').map((s) => s.trim()).filter(Boolean);
+$('b-dyn-send').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/bili/dynamic', { method: 'POST', body: { text: $('b-dyn-text').value, images: imgList('b-dyn-img') } });
+    toast('动态发布成功' + (r.result?.data?.dyn_id ? '（id ' + r.result.data.dyn_id + '）' : ''));
+  } catch (e) { toast('发布失败：' + e.message); }
+});
+$('b-opus-send').addEventListener('click', async () => {
+  try {
+    const r = await api('/api/bili/opus', { method: 'POST', body: { title: $('b-opus-title').value, content: $('b-opus-content').value, images: imgList('b-opus-img') } });
+    toast('图文发布成功');
+  } catch (e) { toast('发布失败：' + e.message); }
+});
+$('b-ap-save').addEventListener('click', async () => {
+  try {
+    await api('/api/bili/autopost', { method: 'POST', body: { enabled: $('b-ap-enabled').checked, time: $('b-ap-time').value.trim() } });
+    toast('定时日报动态设置已保存');
+  } catch (e) { toast('保存失败：' + e.message); }
+});
+
+// ---------- QQ发布 ----------
+async function loadQq() {
+  try {
+    const d = await api('/api/qq/capabilities');
+    $('q-caps').innerHTML = `<table><thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead><tbody>` +
+      d.capabilities.map((c) => `<tr><td>${esc(c.name)}</td><td>${c.support ? '<span class="badge b-ok">可用</span>' : '<span class="badge b-bad">不可用</span>'}</td><td>${esc(c.reason || '')}</td></tr>`).join('') +
+      `</tbody></table>`;
+    if (d.gateway.loginQQ) toast(`网关在线：${d.gateway.loginNickname || ''}（${d.gateway.loginQQ}）`);
+  } catch (e) { toast('能力面板加载失败：' + e.message); }
+}
+$('q-like-send').addEventListener('click', async () => {
+  try {
+    await api('/api/qq/like', { method: 'POST', body: { qq: $('q-like-qq').value.trim(), times: Number($('q-like-times').value) || 1 } });
+    toast('名片赞已送出');
+  } catch (e) { toast('失败：' + e.message); }
+});
+$('q-notice-send').addEventListener('click', async () => {
+  try {
+    await api('/api/qq/notice', { method: 'POST', body: { groupId: $('q-notice-group').value.trim(), content: $('q-notice-content').value } });
+    toast('群公告已发布');
+  } catch (e) { toast('失败：' + e.message); }
+});
+
+// ---------- 日志 ----------
+async function loadLogs() {
+  try {
+    const d = await api('/api/logs?lines=200');
+    $('l-tail').value = d.tail || '（空）';
+  } catch (e) { toast('日志加载失败：' + e.message); }
+}
+$('l-refresh').addEventListener('click', loadLogs);
+
+loadOverview();
+</script>
+</body>
+</html>

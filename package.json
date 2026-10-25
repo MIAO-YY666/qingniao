@@ -1,0 +1,16 @@
+{
+  "name": "qingniao",
+  "version": "1.0.0",
+  "private": true,
+  "description": "青鸟：QQ 陪伴 · B站值班 · 谷时推送 · 本地生图 · 跨平台记忆 的个人 AI 中枢",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "hub": "node services/hub.js",
+    "start": "node services/hub.js",
+    "bridge": "cd qq-bridge && npm start",
+    "check": "node --check services/hub.js && node --check services/scheduler.js && node --check services/persona.js && node --check services/push-service.js && node --check services/qq-social.js"
+  }
+}

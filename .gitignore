@@ -1,0 +1,25 @@
+# 运行时与隐私（绝不入库）
+state/
+logs/
+memory/
+backup/
+*.log
+*.apk
+pictures/
+
+# 凭据与本地配置
+config/suite.json
+qq-bridge/config.json
+bili-duty/bili_credential.json
+bili-duty/out/
+bili-duty/seen.md
+bili-duty/state.json
+local.properties
+
+# 依赖与构建
+node_modules/
+.venv/
+__pycache__/
+build/
+.cxx/
+.gradle/
