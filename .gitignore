@@ -53,7 +53,7 @@ memory/
 pictures/
 docs/
 test/fixtures/*.wav
-qq-bridge/assets/qianxiu.jpeg
+qq-bridge/assets/*.jpeg
 
 # ---------- 语音素材（个人音色，可用 train_sovits.sh 自行重建） ----------
 tools/voice/datasets/
@@ -68,17 +68,3 @@ tools/gptsovits/*.whl
 tools/gptsovits/tmp_s2_*.json
 tools/gptsovits/data_exp.list
 
-# ---------- 安卓端：只留源码，不留构建产物与第三方大件 ----------
-mobile/.gradle/
-mobile/.kotlin/
-mobile/build/
-mobile/app/build/
-mobile/app/src/main/cpp/llama.cpp/
-mobile/local.properties
-mobile/keystore.properties
-mobile/release.keystore
-mobile/*.jks
-mobile/*.apk
-mobile/*.aab
-mobile/.cxx/
-mobile/app/.cxx/

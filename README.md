@@ -149,7 +149,7 @@ DSH 照常自己启动（:3080）。
 
 ### 统一人格（config/persona.yaml，公开模板默认「小鲸鱼」）
 
-一个文件定义「她」：人格列表（小鲸鱼 / 千秋）、全出口共享的语言风格（短句、去 AI 味、
+一个文件定义「她」：人格列表（默认小鲸鱼，可自行增改）、全出口共享的语言风格（短句、去 AI 味、
 不空夸、不用 Markdown、拿不准不编）、每人格的互动细则、B站评论/日报口吻、推送文案模板、
 硬边界。
 
@@ -413,12 +413,12 @@ tools/voice/.venv/Scripts/python.exe tools/voice/asr_cli.py --check  # 看 ASR �
 - 读取：`GET /api/bili/live/status`（心跳）、`GET /api/bili/live/events?since=&limit=`（拉取，只读尾部 2MB）。
 - **发弹幕默认 403**：`POST /api/bili/live/send` 直接拒绝。这是高可见度写操作，私信轮询已有 `-509` 前科，要开必须先做"建议模式 → 人工确认"。
 
-## 手机端：青鸟·口袋版（mobile/）
+## 手机端：青鸟·口袋版
 
-骁龙 8+ Gen 1 本地小模型（llama.cpp + GGUF，推荐 Qwen3-1.7B Q4）+ 无障碍读屏/操作 + 联网搜索 + 截图汇报的完整安卓工程，人格为「青鸟」（接收主人与 PC 端下发的任务）。
-与 PC 端同人格（Prompt.kt 与 persona.yaml 同源）、同记忆格式（people/*.json 双向拷贝互通）。构建方法见 mobile/README.md：
-PC 上跑 tools/fetch-llamacpp.sh → Android Studio 打开 mobile/ → Run。
-
+手机端为独立仓库 [qingniao-mobile](https://github.com/MIAO-YY666/qingniao-mobile)：
+骁龙 8+ Gen 1 本地小模型（llama.cpp + GGUF，推荐 Qwen3-1.7B Q4）+ 无障碍读屏/操作 + 联网搜索 + 截图汇报，
+人格与 PC 端同源（Prompt.kt 与 persona.yaml 同源）、同记忆格式（people/*.json 双向拷贝互通）。
+构建方法见其 README。
 ## 安全注意
 
 - 管理平台只绑定 `127.0.0.1`，且有访问令牌；不要把 3160 端口暴露到公网。
