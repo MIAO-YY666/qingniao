@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,21 @@ export function mintDshAuthCookie(baseUrl, options = {}) {
   return `${name}=v1.${body}.${signature}`;
 }
 
+/**
+ * dsh-link（hub 的 :3080 固定入口）访问令牌：与 hub 令牌一致，
+ * 由 hub 写在 <bloom-hub>/state/hub-token。
+ * 桥接在 bloom-hub 内运行时能读到；独立运行读不到则返回空串
+ * （dsh-link 未配置 token 时同样不校验，两端行为保持兼容）。
+ */
+function readLinkToken() {
+  try {
+    const hubRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    return fs.readFileSync(path.join(hubRoot, 'state', 'hub-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 协议信封
 // ---------------------------------------------------------------------------
@@ -140,6 +156,7 @@ export class NodeApiClient {
     this.baseUrl = String(baseUrl ?? 'http://127.0.0.1:3080').replace(/\/+$/, '');
     this.timeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000;
     this.authCookie = mintDshAuthCookie(this.baseUrl, auth ?? {});
+    this.linkToken = String(auth?.linkToken ?? readLinkToken());
     this.streamSeq = 0;
     this.sessions = this.#sessionsNamespace();
     this.host = this.#hostNamespace();
@@ -175,6 +192,7 @@ export class NodeApiClient {
         headers: {
           'content-type': 'application/json',
           ...(this.authCookie === undefined ? {} : { cookie: this.authCookie }),
+          ...(this.linkToken ? { 'x-dsh-link-token': this.linkToken } : {}),
         },
         body: JSON.stringify({ type: 'client-request', rpcId, method: endpoint, payload: { args } }),
         signal: controller.signal,
@@ -214,9 +232,13 @@ export class NodeApiClient {
   async *openStream(endpoint, args, signal, onReady) {
     const streamId = this.nextStreamId();
     // Node 内置 WebSocket（undici）支持 headers 选项（浏览器不支持），用它带会话 Cookie。
-    const socket = this.authCookie === undefined
-      ? new WebSocket(this.wsUrl('/api/remote.mux'))
-      : new WebSocket(this.wsUrl('/api/remote.mux'), { headers: { cookie: this.authCookie } });
+    const wsHeaders = {
+      ...(this.authCookie === undefined ? {} : { cookie: this.authCookie }),
+      ...(this.linkToken ? { 'x-dsh-link-token': this.linkToken } : {}),
+    };
+    const socket = Object.keys(wsHeaders).length > 0
+      ? new WebSocket(this.wsUrl('/api/remote.mux'), { headers: wsHeaders })
+      : new WebSocket(this.wsUrl('/api/remote.mux'));
     const inbox = [];
     let wake;
     let failure;
@@ -498,9 +520,13 @@ export class NodeApiClient {
    * 现在：snapshot 先发它携带的全部 record，再发就绪信号；后续增量照常逐个发。
    */
   async *#sessionEvents(sessionId, opts) {
-    const frame = (event) => ({
+    // historical=true 表示这一帧来自首帧 snapshot 的历史回放，不是刚发生的事件。
+    // 调用方必须据此区分：历史帧只用于恢复状态机，绝不能再发一次 QQ 消息 / 报错通知。
+    // （2026-11-05：DSH 每次回合结束都会关掉 follow 流，桥接重连即整批回放；
+    //  回放里那条失败的 turn/end 曾被当成新错误，同一个 request_id 在 QQ 刷了 165 次。）
+    const frame = (event, historical) => ({
       rpcId: randomUUID(),
-      payload: { type: 'session/event', sessionId, event },
+      payload: { type: 'session/event', sessionId, event, historical },
     });
     for await (const value of this.openStream(
       'session/follow',
@@ -510,14 +536,14 @@ export class NodeApiClient {
     )) {
       if (value?.type === 'snapshot') {
         for (const record of value.records ?? []) {
-          if (record?.type === 'event' && record.event !== undefined) yield frame(record.event);
+          if (record?.type === 'event' && record.event !== undefined) yield frame(record.event, true);
         }
         // 历史补完之后才算就绪：调用方在 onOpen 之后才 prompt，避免漏 turn。
         opts.onReady?.();
         continue;
       }
       if (value?.type === 'event' && value.event !== undefined) {
-        yield frame(value.event);
+        yield frame(value.event, false);
       }
     }
   }
@@ -637,4 +663,36 @@ export function blocksToText(content) {
     .filter((b) => b?.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text)
     .join('');
+}
+
+/**
+ * 上游 LLM / 传输层的「瞬时故障」：等一等或重试就能恢复，不该把英文原文
+ * 当 fatal 报错怼给用户。
+ *
+ * 2026-11-05 实测命中的两类 DeepSeek 官方文案：
+ *   · Service is too busy. We advise users to temporarily switch ... (request_id: xxx)
+ *   · DeepSeek Messages stream ended before message_stop / transport failed
+ * 旧正则只认 transport / 502 / 503 / timeout，前两条会被误判成 fatal，
+ * 于是 QQ 上直接刷出「⚠️ agent 处理出错：Service is too busy ...」。
+ */
+export const TRANSIENT_ERR_RE = /transport|fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|timeout|52[0-9]|429|503|502|network|too busy|temporarily switch|stream ended before|rate.?limit|overload|capacity|throttl|try again later/i;
+
+/**
+ * 把一条 agent 错误归类，并给出一个稳定的去重签名。
+ * 带 request_id 的错误按 id 归类：同一个上游请求无论被回放/重试多少次，都只算一条。
+ * @returns {{ transient: boolean, signature: string, requestId: string|null, text: string }}
+ */
+export function classifyAgentError(message) {
+  const text = String(message ?? '');
+  const requestId = text.match(/request_id:\s*([0-9a-f-]{8,})/i)?.[1] ?? null;
+  const transient = TRANSIENT_ERR_RE.test(text);
+  const signature = requestId
+    ? `rid:${requestId}`
+    : `msg:${text.replace(/\s+/g, ' ').trim().slice(0, 120)}`;
+  return { transient, signature, requestId, text };
+}
+
+/** 这一帧是不是 session/follow 首帧 snapshot 回放出来的历史事件。 */
+export function isReplayFrame(frame) {
+  return frame?.type === 'session/event' && frame?.historical === true;
 }

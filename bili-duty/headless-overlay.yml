@@ -24,3 +24,13 @@
           - '<项目路径>/bili-duty/mcp_server.py'
         env:
           BILI_MCP_TOOLS: 'bili_search,bili_subtitle,bili_comments,bili_video_info,bili_send_message'
+
+- insert:
+    - id: mcp-memory-duty
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: memory
+        transport: stdio
+        command: 'D:/nodejs/node.exe'
+        args:
+          - '<项目路径>/qq-bridge/src/mcp-memory-server.js'

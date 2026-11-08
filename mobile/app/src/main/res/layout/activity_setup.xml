@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="青鸟 · 新手向导"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/stepIndicator"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="第 1 步 / 共 3 步：看看你的手机"
+            android:textSize="13sp"
+            android:paddingTop="2dp"
+            android:paddingBottom="10dp" />
+
+        <!-- ============ 第 1 步：设备 + 模型推荐 ============ -->
+        <LinearLayout android:id="@+id/step1" style="@style/WizCard">
+            <TextView style="@style/WizTitle" android:text="① 你的手机配置" />
+            <TextView
+                android:id="@+id/deviceInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:paddingBottom="8dp" />
+            <TextView style="@style/WizTitle" android:text="② 给她选个大脑（已为你标好推荐）" />
+            <RadioGroup
+                android:id="@+id/modelGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="提示：模型就是一个约 1~2.5GB 的文件，装好后她才能在本地思考；不装也可以之后用云端模式。"
+                android:textSize="11sp"
+                android:paddingTop="6dp" />
+            <Button
+                android:id="@+id/btnDownload"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="③ 下载并自动配置（走系统下载，有通知进度）"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/downloadStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:paddingTop="6dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="下载失败/网慢？也可以用电脑下载 .gguf 文件放进手机 Download，然后回主界面点「导入本地 GGUF 模型」。"
+                android:textSize="11sp"
+                android:paddingTop="4dp" />
+        </LinearLayout>
+
+        <!-- ============ 第 2 步：权限 ============ -->
+        <LinearLayout android:id="@+id/step2" style="@style/WizCard">
+            <TextView style="@style/WizTitle" android:text="④ 给她开权限（每一项点一下就行）" />
+            <Button android:id="@+id/btnWizA11y" style="@style/WizBtn" android:text="看得见屏幕：无障碍开关 →" />
+            <Button android:id="@+id/btnWizNotif" style="@style/WizBtn" android:text="收得到消息：通知权限 →" />
+            <Button android:id="@+id/btnWizShot"  style="@style/WizBtn" android:text="截得了图：截屏授权 →" />
+            <Button android:id="@+id/btnWizBat"   style="@style/WizBtn" android:text="不被系统杀：电池白名单 →" />
+            <TextView
+                android:id="@+id/permStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:paddingTop="6dp" />
+        </LinearLayout>
+
+        <!-- ============ 第 3 步：完成 ============ -->
+        <LinearLayout android:id="@+id/step3" style="@style/WizCard">
+            <TextView style="@style/WizTitle" android:text="⑤ 完成！" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:text="点下面的按钮叫醒她。想试试可以输入：&#10;· 打开QQ给主人发消息：我上线啦&#10;· 今天上海天气怎么样，查完告诉我" />
+            <Button
+                android:id="@+id/btnFinish"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="叫醒青鸟 🐋"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

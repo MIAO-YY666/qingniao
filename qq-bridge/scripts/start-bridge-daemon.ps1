@@ -16,10 +16,10 @@
 
 $ErrorActionPreference = 'Continue'
 
-$repo = 'D:\harnessWorkspace\qq-bridge'
+$repo = $PSScriptRoot
 $logDir = Join-Path $repo 'state'
 $log = Join-Path $logDir 'bridge-daemon.log'
-$node = 'D:\nodejs\node.exe'
+$node = (Get-Command node -ErrorAction SilentlyContinue).Source; if (-not $node) { $node = 'C:\Program Files\nodejs\node.exe' }
 $entry = Join-Path $repo 'src\bridge.js'
 
 function Write-DaemonLog([string]$message) {

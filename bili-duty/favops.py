@@ -10,6 +10,14 @@ import json
 import os
 import sys
 
+# ⭐ Windows 上 Python 默认按 GBK 编/解码标准输出 —— 收藏夹标题/报错里的中文或 emoji
+#    打进管道会直接炸（UnicodeEncodeError/乱码）。与 asr.py 同一套钉法。
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # 凭证找两处：优先**当前工作目录**（宿主 spawn 时 cwd = 插件家，凭证就在那儿），

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="WizCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">#14000000</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:layout_marginBottom">10dp</item>
+    </style>
+    <style name="WizTitle" parent="@android:style/Widget.Material.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:paddingBottom">6dp</item>
+    </style>
+    <style name="WizBtn" parent="@android:style/Widget.Material.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:gravity">start|center_vertical</item>
+    </style>
+</resources>

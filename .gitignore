@@ -1,25 +1,84 @@
-# 运行时与隐私（绝不入库）
+# ============================================================
+# qingniao 根仓库 .gitignore
+# 原则：只进「代码 + 配置模板 + 文档」；不进凭据、运行时状态、第三方大件、个人内容。
+# ============================================================
+
+# ---------- 凭据 / 本地配置 ----------
+config/suite.json
+*.local.json
+*.bak
+*.bak-*
+qq-bridge/config.json
+
+# ---------- 运行时产物 ----------
 state/
 logs/
-memory/
-backup/
 *.log
-*.apk
-pictures/
-
-# 凭据与本地配置
-config/suite.json
-qq-bridge/config.json
-bili-duty/bili_credential.json
+*.tmp
+*.pid
+*.lock
 bili-duty/out/
+bili-duty/tmp/
+bili-duty/reports/
+bili-duty/digest/
 bili-duty/seen.md
 bili-duty/state.json
-local.properties
-
-# 依赖与构建
-node_modules/
-.venv/
+bili-duty/verify-state.json
+bili-duty/dm-lock.json
+bili-duty/dm-others.json
+bili-duty/local-override.json
+bili-duty/mcp_server.py.new
+bili-duty/install.log
+bili-duty/.probe.txt
+bili-duty/_probe*.txt
+bili-duty/_write_probe.txt
+bili-duty/.write-probe
+bili-duty/.write-test*
 __pycache__/
-build/
-.cxx/
-.gradle/
+*.pyc
+
+# ---------- Python 环境 ----------
+bili-duty/.venv/
+bili-duty/.venv-asr/
+tools/voice/.venv/
+
+# ---------- Node ----------
+node_modules/
+
+# ---------- SnowLuma：第三方发行包，EULA 禁止再分发，不入库 ----------
+SnowLuma/
+
+# ---------- 个人内容（不随代码走） ----------
+memory/
+pictures/
+docs/
+test/fixtures/*.wav
+qq-bridge/assets/qianxiu.jpeg
+
+# ---------- 语音素材（个人音色，可用 train_sovits.sh 自行重建） ----------
+tools/voice/datasets/
+tools/voice/models/
+tools/voice/models-uvr/
+tools/voice/dl/
+tools/voice/refs/
+tools/gptsovits/GPT-SoVITS/
+tools/gptsovits/.venv/
+tools/gptsovits/*.zip
+tools/gptsovits/*.whl
+tools/gptsovits/tmp_s2_*.json
+tools/gptsovits/data_exp.list
+
+# ---------- 安卓端：只留源码，不留构建产物与第三方大件 ----------
+mobile/.gradle/
+mobile/.kotlin/
+mobile/build/
+mobile/app/build/
+mobile/app/src/main/cpp/llama.cpp/
+mobile/local.properties
+mobile/keystore.properties
+mobile/release.keystore
+mobile/*.jks
+mobile/*.apk
+mobile/*.aab
+mobile/.cxx/
+mobile/app/.cxx/

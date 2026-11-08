@@ -1,0 +1,8 @@
+# Windows 批处理必须用 CRLF，且正文保持纯 ASCII。
+# 2026-11-06 实测：LF-only + UTF-8 中文会让 cmd.exe 按字节偏移错乱，
+# 把 rem / echo 行从中间切开当命令执行；chcp 65001 + UTF-8 无 BOM 同样会触发；
+# 加 BOM 又会让首行 @echo off 失效。中文提示一律放 UTF-8 BOM 的 .ps1
+# （scripts/service-control.ps1、scripts/restore-toggles.ps1）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

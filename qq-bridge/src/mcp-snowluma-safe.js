@@ -163,6 +163,44 @@ async function authorizeRead(key, token) {
   await agentApi('/api/authorize/read', { method: 'POST', body: JSON.stringify({ key, token: token || undefined }) });
 }
 
+// ---- hub 侧调用（语音合成在 hub，不在桥接）----
+// 每次都重读 suite.json / state/hub-token：令牌轮换后不必重启 MCP 进程。
+function hubEndpoint() {
+  const hubRoot = path.resolve(ROOT, '..');
+  let port = 3160;
+  let token = '';
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(hubRoot, 'config', 'suite.json'), 'utf8'));
+    port = Number(s.hub?.port) || 3160;
+    token = String(s.hub?.token || '');
+  } catch { /* 用默认 */ }
+  if (!token) {
+    try { token = fs.readFileSync(path.join(hubRoot, 'state', 'hub-token'), 'utf8').trim(); } catch { /* ignore */ }
+  }
+  return { base: `http://127.0.0.1:${port}`, token };
+}
+
+async function hubCall(pathname, { method = 'GET', body, timeoutMs = 240000 } = {}) {
+  const { base, token } = hubEndpoint();
+  const res = await fetch(`${base}${pathname}`, {
+    method,
+    headers: { 'content-type': 'application/json', ...(token ? { 'x-hub-token': token } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch { /* 非 JSON */ }
+  if (!res.ok || data?.ok === false) {
+    // 把原始响应挂在 error 上，调用方才能区分「被开关关掉」和「真出错」
+    const err = new Error(data?.error || `hub HTTP ${res.status}`);
+    err.payload = data;
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
 const server = new McpServer({ name: 'snowluma-safe', version: '0.1.0' });
 
 server.tool(
@@ -941,7 +979,7 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
 if (cfg.socialV2?.tools?.getSelfImage !== false) {
   server.tool(
     'qq_get_self_image',
-    '查看你自己的默认 Q 版形象图片（DeepSeek 小鲸鱼形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
+    '查看你自己的形象参考图（以统一人格 appearance 设定为准）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
     {
       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
@@ -955,7 +993,7 @@ if (cfg.socialV2?.tools?.getSelfImage !== false) {
         }
         return {
           content: [
-            { type: 'text', text: '这是你的默认 Q 版形象：' },
+            { type: 'text', text: '这是你的形象参考图：' },
             { type: 'image', mimeType: data.image.mimeType, data: data.image.data }
           ]
         };
@@ -1089,6 +1127,59 @@ if (cfg.socialV2?.tools?.getForwardMsg !== false) {
         return { content };
       } catch (error) {
         return { content: [{ type: 'text', text: `查看合并转发失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.tools?.sendVoice !== false) {
+  server.tool(
+    'qq_send_voice',
+    '给指定私聊发一条语音（TTS 合成成 QQ 语音气泡）。适合道谢、撒娇、情绪重的时候，别刷屏：同一会话 45 秒内只能发一条，正文 ≤500 字。发完这条就等于你把这句话说出口了，不要再重复发同样内容的文字。只支持私聊；群聊没有开放。',
+    {
+      key: z.string().describe('会话 key，仅支持 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      text: z.string().min(1).max(500).describe('要说的话：口语、短句、不要 Markdown、不要括号动作描写'),
+      engine: z.enum(['sapi', 'edge', 'sovits']).optional().describe('合成引擎，默认按 persona.yaml 的 voice.engine'),
+      voice: z.string().optional().describe('音色名（sapi 下如 "Microsoft Yaoyao"）'),
+      wake: z.boolean().optional().describe('发完是否唤醒该会话；你正在说话时一般不用')
+    },
+    async ({ key, token, text, engine, voice, wake }) => {
+      try {
+        const m = /^private:(\d+)$/.exec(String(key || ''));
+        if (!m) {
+          return { content: [{ type: 'text', text: '语音只支持私聊会话（key 形如 private:QQ号）' }], isError: true };
+        }
+        // 与其它工具同一套闸门：agent token + 当前模式 + 白名单
+        await authorizeRead(key, token);
+        const data = await hubCall('/api/qq/voice', {
+          method: 'POST',
+          body: { userId: Number(m[1]), text: String(text), engine, voice, wake: wake === true }
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        // 被开关关掉不算故障：明确告诉模型别再试，改回文字
+        if (error?.payload?.disabled) {
+          return {
+            content: [{ type: 'text', text: `语音出站已关闭：${error.payload.error}。这次请用文字回复，不要重试发语音。` }],
+            isError: true
+          };
+        }
+        return { content: [{ type: 'text', text: `发语音失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'qq_voice_status',
+    '查语音链路是否就绪：TTS 引擎、可用音色、ASR 是否装好、persona 里的音色配置。发语音前如果失败可以先查这个。',
+    {},
+    async () => {
+      try {
+        const data = await hubCall('/api/tts/status', { timeoutMs: 30000 });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `查询失败：${error?.message ?? error}` }], isError: true };
       }
     }
   );

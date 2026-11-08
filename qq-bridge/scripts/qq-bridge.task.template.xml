@@ -43,8 +43,8 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "D:\harnessWorkspace\qq-bridge\scripts\start-bridge-daemon.ps1"</Arguments>
-      <WorkingDirectory>D:\harnessWorkspace\qq-bridge</WorkingDirectory>
+      <Arguments>-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<项目路径>\qq-bridge\scripts\start-bridge-daemon.ps1"</Arguments>
+      <WorkingDirectory><项目路径>\qq-bridge</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>

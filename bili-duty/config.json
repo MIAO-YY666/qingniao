@@ -1,11 +1,18 @@
 {
+  "dmWatch": true,
+  "dmWatchMinutes": 1,
+  "dmReplyPerDay": 0,
+  "dmOwnerUid": 372430694,
+  "personaPrompt": "",
   "perDay": 5,
   "peakValley": true,
   "noon": true,
   "night": true,
-  "autoComment": false,
+  "autoComment": true,
   "transcribe": false,
   "asrModel": "small",
+  "dmMode": "only",
+  "dmUid": 372430694,
   "keywords": [],
   "commentPerRound": 1,
   "mentionName": "你的B站昵称",
@@ -15,6 +22,16 @@
   "overlayMcp": true,
   "workspace": "",
   "reportLevel": "full",
-  "replyToComments": false,
-  "replyPerRound": 0
+  "replyToComments": true,
+  "replyPerRound": 1,
+  "favFolderId": 0,
+  "_set": [
+    "peakValley",
+    "autoComment",
+    "mentionName",
+    "pythonPath",
+    "replyToComments",
+    "dmUid",
+    "dmOwnerUid"
+  ]
 }

@@ -5,10 +5,10 @@
 // （读 SnowLuma/config/onebot_<uin>.json）。
 // 本脚本定时探测：
 //   · 哪些账号在线（按各自 token 问 get_login_info）
-//   · 青鸟（期望账号）不在线时：一台 QQ 都没有 → 自动拉起 QQ 客户端
-//     （自动登录谁由 QQ 自己记住的会话决定）；已有实例但没登青鸟 →
+//   · 期望账号（期望账号）不在线时：一台 QQ 都没有 → 自动拉起 QQ 客户端
+//     （自动登录谁由 QQ 自己记住的会话决定）；已有实例但没登期望账号 →
 //     明确提示需要手动登录她的实例（挂载是 SnowLuma hookAutoLoad 自动的）
-//   · 青鸟在线而桥接没跑 → 直接拉起桥接
+//   · 期望账号在线而桥接没跑 → 直接拉起桥接
 // 用法：
 //   node scripts/watch-qq.mjs            # 单次探测
 //   node scripts/watch-qq.mjs --loop 60  # 每 60 秒循环
@@ -97,7 +97,7 @@ async function ensureBridgeIfTargetOnline() {
     const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(2000) });
     if (res) return true;
   } catch { /* down */ }
-  log('青鸟在线但桥接没跑，拉起桥接…');
+  log('期望账号在线但桥接没跑，拉起桥接…');
   const child = spawn(process.execPath, ['src/bridge.js'], { cwd: path.join(ROOT, 'qq-bridge'), detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   return false;
@@ -129,7 +129,7 @@ export async function watchOnce() {
   if (qqCount === 0) {
     launchQq();
   } else {
-    log(`青鸟（${TARGET_UIN}）不在线但已有 ${qqCount} 个 QQ 相关进程：需要在 QQ 客户端登录她的实例（多开），登录后 SnowLuma 会自动挂载，本脚本会在下一轮探测到`);
+    log(`期望账号（${TARGET_UIN}）不在线但已有 ${qqCount} 个 QQ 相关进程：需要在 QQ 客户端登录她的实例（多开），登录后 SnowLuma 会自动挂载，本脚本会在下一轮探测到`);
   }
   return false;
 }

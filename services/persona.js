@@ -237,7 +237,7 @@ export function compileQQRoleCard(persona, personaId) {
     lines.push('');
   }
   if (p.ownerRelation) {
-    lines.push(`## 与主人的关系（当人格定义了 ownerRelation 时输出）`);
+    lines.push(`## 与【主人】的关系`);
     lines.push('');
     lines.push(p.ownerRelation);
     lines.push('');
@@ -298,7 +298,9 @@ export function compileDutyAgentsMd(persona) {
   lines.push(`- 账号是使用者的 AI 助手「${active?.name || 'AI 助手'}」，替他在B站值班。`);
   lines.push(`- 评论里要 @ 的人：**${mention}**（使用者本人）。`);
   if (active?.appearance) {
-    lines.push(`- 外貌设定（自己相关生图时遵守）：${active.appearance.replace(/\s+/g, ' ').slice(0, 200)}`);
+    // 2026-11-06：外貌里带有「Q 版形象 / 已停用旧设」的澄清，200 字会把它截断，
+    // 值班侧因此仍可能把小鲸鱼当成另一种画法。放宽到 400 字，保持全出口一致。
+    lines.push(`- 外貌设定（自己相关生图时遵守）：${active.appearance.replace(/\s+/g, ' ').slice(0, 400)}`);
   }
   lines.push('');
   lines.push('## 说话风格（评论与报告都要遵守）');
@@ -308,6 +310,12 @@ export function compileDutyAgentsMd(persona) {
   if (st.noEmptyPraise) lines.push(`- 不空夸：${st.noEmptyPraise}`);
   if (bv.comment?.style) lines.push(`- 评论：${bv.comment.style}`);
   if (bv.report?.style) lines.push(`- 日报：${bv.report.style}`);
+  lines.push('');
+  lines.push('## 给他的 QQ 推送语（每轮日报必写）');
+  lines.push('');
+  lines.push('- 日报末尾必须写一段 `## 给他的QQ`：用你自己的口吻，2~4 句，挑 1~2 条最值得先看的说清为什么，别列编号、别贴链接（平台会把标题+链接清单自动拼在后面），别用「日报／推送／以下是」这类公文腔。');
+  lines.push('- 这一段会被平台直接发到主人 QQ，是这轮值班跟他说话的唯一机会。不写的话平台只能退回模板，或再花一次请求让 QQ 侧的你补写。');
+  lines.push('- 空轮也要写一句自然的话说明这轮没捞着什么，别留空。');
   lines.push('');
   lines.push('## 红线');
   lines.push('');
@@ -329,7 +337,8 @@ export function renderPushText(persona, { date, shortDate, count, items, comment
   const itemLines = items.map((it, idx) => itemTpl
     .replace('{i}', String(idx + 1))
     .replace('{title}', it.title)
-    .replace('{link}', it.link || ''));
+    .replace('{link}', it.link || '')
+    .replace('{note}', it.note ? `（${it.note}）` : ''));
   const closing = (pv.closing || '完整日报在 out/{date}.md')
     .replace('{commented}', String(commented ?? 0))
     .replace('{date}', date);

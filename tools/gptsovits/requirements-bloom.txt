@@ -1,0 +1,44 @@
+# GPT-SoVITS 训练用依赖（相对官方 requirements.txt 的删减版）
+#
+# 删掉的东西与理由：
+#   --no-binary=opencc  → 强制源码编译 opencc，本机无 MSVC；opencc 有 cp312 win 轮子，直接装
+#   jieba_fast          → 无 cp312 win 轮子；用 stubs/jieba_fast 转发到 jieba
+#   pyopenjtalk         → 需编译；只用中文，用 stubs/pyopenjtalk 兜住 import
+#   funasr              → 仅 WebUI 的 ASR 步骤用；我们已有歌词校正后的文本，不装（省 ~1GB）
+#   gradio<5            → 仅 WebUI 用；走命令行训练，不装
+#   onnxruntime-gpu     → 只有 G2PW 的拼音消歧用小模型，CPU 版足够，避免拖 CUDA 运行库
+#   torchaudio          → 单独从 cu128 轮子装，保证与 torch 2.8.0 严格同版
+#   torch               → 同上（3.46GB，走上交镜像）
+
+numpy<2.0
+scipy
+tensorboard
+librosa==0.10.2
+numba
+pytorch-lightning>=2.4
+ffmpeg-python
+onnxruntime
+tqdm
+cn2an
+pypinyin
+g2p_en
+modelscope
+sentencepiece
+transformers>=4.51,<5
+peft<0.18.0
+chardet
+PyYAML
+psutil
+jieba
+split-lang
+fast_langdetect>=0.3.1
+wordsegment
+rotary_embedding_torch
+ToJyutping
+g2pk2
+ko_pron
+opencc
+fastapi[standard]>=0.115.2
+x_transformers
+torchmetrics<=1.5
+pydantic<=2.10.6

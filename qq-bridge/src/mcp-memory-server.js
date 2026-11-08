@@ -70,23 +70,33 @@ mcp.tool(
 
 mcp.tool(
   'memory_read',
-  '读取指定 key 的完整记忆。key 形如 qq-<QQ号> / group-<群号> / bili-<B站UID或昵称>。',
+  '读取指定 key 的完整记忆。key 形如 qq-10000 / group-10000 / bili-<B站UID或昵称>。',
   { key: z.string().describe('记忆 key：qq-<QQ号> / group-<群号> / bili-<B站UID或昵称>') },
   async ({ key }) => ({ content: [{ type: 'text', text: brief(store.readPerson(key)) }] })
 );
 
 mcp.tool(
   'memory_write',
-  '为某人追加一条长期印象（会去重；key 用任一身份都会落到同一个人）。互动过、值得记住的点都写在这里：称呼、偏好、说过的话、你的判断、你给他推过的东西。',
+  '为某人追加一条长期印象（会去重；key 用任一身份都会落到同一个人）。日常互动是这里的主要内容：称呼、偏好、最近发生的事、对方的情绪与反应、他说过的原话、你对他的新判断、你们关系的变化。写得具体、带证据，别写空泛评价。不要写平台流水账（日报推送、系统通知、工具回执），那些由平台自己记录。',
   {
     key: z.string().describe('记忆 key：qq-<QQ号> / group-<群号> / bili-<B站UID或昵称>（任一身份均可）'),
     text: z.string().max(500).describe('印象内容，一句话，例如「喜欢在深夜值班时冒泡，对插件安全话题敏感」'),
     displayName: z.string().optional().describe('这个人的显示名（B站昵称/QQ昵称），第一次写时给上'),
-    platform: z.string().optional().describe('来源平台：qq / bili')
+    platform: z.string().optional().describe('来源平台：qq / bili'),
+    importance: z.number().min(0).max(3).optional().describe('重要程度 1~3，默认自动判断；涉及长期偏好、身份、关系变化时给 3'),
+    supersedes: z.string().optional().describe('若这条是在更正/更新一条旧印象，把旧印象原文（或其关键部分）填这里；旧条目会被标为已过期，不再同时注入，避免两种说法打架')
   },
-  async ({ key, text, displayName, platform }) => {
+  async ({ key, text, displayName, platform, importance, supersedes }) => {
+    // 硬兜底：即便模型没读进新规则，也别让它把平台流水账塞进人物印象。
+    if (/给他推了日报|平台代发|B站值班\s*\d{4}-\d{2}-\d{2}|推送了日报/.test(String(text || ''))) {
+      return { content: [{ type: 'text', text: '这条像平台推送流水账，按记忆规则不用你记（平台自己会记录）。日常互动、对方的事、你对他的印象才值得写。' }] };
+    }
     try {
-      const p = store.addImpression(key, text, { displayName, platform, source: 'agent' });
+      const p = store.addImpression(key, text, {
+        displayName, platform, source: 'agent', kind: 'episode',
+        ...(Number.isFinite(Number(importance)) && importance !== undefined ? { salience: Number(importance) } : {}),
+        ...(String(supersedes || '').trim() ? { supersedes: String(supersedes).trim() } : {})
+      });
       return { content: [{ type: 'text', text: `已记住（${p.key}，共 ${p.impressions.length} 条印象）。` }] };
     } catch (e) {
       return { content: [{ type: 'text', text: `写入失败：${e.message}` }] };
@@ -96,16 +106,18 @@ mcp.tool(
 
 mcp.tool(
   'memory_forget',
-  '删除记忆：给 index 只删那一条印象；不给 index 删除这个人/会话的全部记忆。',
+  '删除记忆：必须给 index（memory_read 里看到的序号），每次只删那一条印象。不支持整份删除——这是防提示注入的安全闸：被诱导时最多丢几条指定记忆，不会一句话清空一个人。',
   {
     key: z.string().describe('记忆 key'),
-    index: z.number().int().optional().describe('要删除的印象序号（memory_read 里看到的序号）；省略则整份删除')
+    index: z.number().int().describe('要删除的印象序号（memory_read 里看到的序号）；一次删一条')
   },
   async ({ key, index }) => {
     try {
       if (index === undefined || index === null) {
-        const removed = store.forgetPerson(key);
-        return { content: [{ type: 'text', text: removed ? `已删除 ${key} 的全部记忆（${removed.impressions?.length ?? 0} 条）。` : '本来就没有这份记忆。' }] };
+        // 安全闸（2026-11-08）：不给 index 的「整人删除」一律拒绝。此前一句注入
+        // 就能清空任意人的全部记忆，唯一防线是 duty.md 的提示词——不够。
+        // 真要清空：先 memory_read 拿序号，逐条删（每条都有明确目标）。
+        return { content: [{ type: 'text', text: '已拒绝：整份删除不可用（防注入安全闸）。请先用 memory_read 查看印象序号，再用 index 逐条删除。' }] };
       }
       const { removed } = store.removeImpression(key, index);
       return { content: [{ type: 'text', text: `已删除：${removed.text}` }] };

@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "note": "能力唯一声明源。新增能力=在这里加一条+写实现；bridge 的 SEND_TOOL_RE 由本文件派生，不再手写。",
+  "capabilities": [
+    {
+      "id": "qq.send-message",
+      "group": "qq",
+      "name": "QQ 发消息（统一发送）",
+      "write": true,
+      "mcpTool": "qq_send_message",
+      "sendTool": true,
+      "sendReason": "这条工具本身就把回复内容发出去了，桥接必须跳过自动转发，否则双发",
+      "toolFlag": "sendMessage",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.send-private",
+      "group": "qq",
+      "name": "QQ 私聊发送",
+      "write": true,
+      "mcpTool": "qq_send_private_message",
+      "sendTool": true,
+      "sendReason": "同上",
+      "toolFlag": "sendPrivate",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.send-group",
+      "group": "qq",
+      "name": "QQ 群发送",
+      "write": true,
+      "mcpTool": "qq_send_group_message",
+      "sendTool": true,
+      "sendReason": "同上",
+      "toolFlag": "sendGroup",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.reply",
+      "group": "qq",
+      "name": "QQ 引用回复",
+      "write": true,
+      "mcpTool": "qq_reply",
+      "sendTool": true,
+      "sendReason": "同上",
+      "toolFlag": "reply",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.send-burst",
+      "group": "qq",
+      "name": "QQ 分条连发",
+      "write": true,
+      "mcpTool": "qq_send_burst",
+      "sendTool": true,
+      "sendReason": "同上",
+      "toolFlag": "sendBurst",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.send-voice",
+      "group": "qq",
+      "name": "QQ 发语音（TTS）",
+      "write": true,
+      "mcpTool": "qq_send_voice",
+      "sendTool": true,
+      "sendReason": "语音气泡里说的就是这句回复，若再自动转发文字会重复",
+      "toolFlag": "sendVoice",
+      "impl": "hub+qq-bridge",
+      "enabled": false,
+      "note": "2026-11-05 关闭：翻唱素材训出的音色不理想（唱腔残留）。TTS 仍可 /api/tts/speak 试听；恢复时把 enabled 改回 true 并清掉 tts.qqVoice.enabled=false"
+    },
+    {
+      "id": "qq.send-sticker",
+      "group": "qq",
+      "name": "QQ 发收藏表情",
+      "write": true,
+      "mcpTool": "qq_send_sticker",
+      "sendTool": false,
+      "sendReason": "表情是装饰件，不承载回复正文；算作 sendTool 会把同一回合的文字吞掉",
+      "toolFlag": "sendSticker",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "qq.poke",
+      "group": "qq",
+      "name": "QQ 戳一戳",
+      "write": true,
+      "mcpTool": "qq_send_poke",
+      "sendTool": false,
+      "sendReason": "同上：戳一下不是回复正文",
+      "toolFlag": "sendPoke",
+      "impl": "qq-bridge",
+      "enabled": true
+    },
+    {
+      "id": "bili.draft",
+      "group": "bili",
+      "name": "B站动态（先审后发）",
+      "write": true,
+      "mcpTool": "bili_draft_submit",
+      "sendTool": false,
+      "toolFlag": null,
+      "impl": "services/bili-draft.js",
+      "review": "pre",
+      "enabled": true
+    },
+    {
+      "id": "bili.live-danmaku",
+      "group": "bili",
+      "name": "B站直播弹幕（只收）",
+      "write": false,
+      "mcpTool": null,
+      "sendTool": false,
+      "toolFlag": null,
+      "impl": "bili-duty/live_sidecar.py",
+      "enabled": true
+    },
+    {
+      "id": "bili.live-send",
+      "group": "bili",
+      "name": "B站直播发弹幕",
+      "write": true,
+      "mcpTool": null,
+      "sendTool": false,
+      "toolFlag": null,
+      "impl": "bili-duty/live_adapter.py",
+      "review": "pre",
+      "enabled": false,
+      "disabledReason": "默认关闭：已有 -509 频控前科，写操作须先审后发"
+    }
+  ]
+}

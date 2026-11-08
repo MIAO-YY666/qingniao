@@ -57,12 +57,38 @@ async function listListeningPorts(pids) {
   }
 }
 
-export function createDshLink({ suite, log, mintCookie }) {
+export function createDshLink({ suite, log, mintCookie, token }) {
   const writeLog = (msg) => log(`[dsh-link] ${msg}`);
   const desktopExe = suite.paths?.dshDesktopExe || 'D:\\DeepSeekHarness\\DeepSeek Harness.exe';
   const desktopProcessName = desktopExe.split('\\').pop();
+  // token 支持传函数：hub 轮换令牌后不必重启 dsh-link（以前是启动时的快照，
+  // 结果"轮换成功"但 3080 还认旧值 —— 这类陈旧快照是同一个坑）。
+  const linkTokenNow = () => String(typeof token === 'function' ? token() : token || '').trim();
+  if (!linkTokenNow()) {
+    // 没配置就不拦（保持兼容），但明确告警：此时本机任意进程都能经此代理全权操控 DSH
+    writeLog('⚠ 未配置 dsh-link 访问令牌（suite.hub.token 为空）：3080 入口处于无鉴权状态');
+  }
   let targetPort = null;
   let discovering = null;
+
+  // 入口鉴权：配置了 token 才启用；校验 x-dsh-link-token 头或 ?token= 查询参数
+  function authOk(req) {
+    const expected = linkTokenNow();
+    if (!expected) return true;
+    const header = String(req.headers['x-dsh-link-token'] || '');
+    if (header === expected) return true;
+    try {
+      const q = new URL(req.url, 'http://127.0.0.1').searchParams.get('token') || '';
+      return q === expected;
+    } catch {
+      return false;
+    }
+  }
+
+  function unauthorized(res) {
+    res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: '未授权：dsh-link 需要 x-dsh-link-token（与 hub 令牌一致）' }));
+  }
 
   function cookieFor(port) {
     return mintCookie(`http://127.0.0.1:${port}`);
@@ -145,6 +171,22 @@ export function createDshLink({ suite, log, mintCookie }) {
   }
 
   async function proxyReq(req, res) {
+    // /healthz：免鉴权、只回布尔与状态码，供 doctor / ensure-running 判定
+    // "桌面端内嵌 web 是否真的就绪"。以前探针把 401 当健康，这一条就是修那个坑。
+    if (req.method === 'GET' && /^\/healthz(\?|$)/.test(req.url || '')) {
+      const port = targetPort ?? (await discover().catch(() => null));
+      const ready = Boolean(port);
+      res.writeHead(ready ? 200 : 503, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        ok: ready,
+        service: 'dsh-link',
+        targetReady: ready,
+        targetPort: ready ? port : null,
+        at: new Date().toISOString()
+      }));
+      return;
+    }
+    if (!authOk(req)) return unauthorized(res);
     let port = await resolveTarget();
     if (!port) {
       // 立刻重试一次发现（桌面端可能刚启动）
@@ -183,6 +225,7 @@ export function createDshLink({ suite, log, mintCookie }) {
   }
 
   function proxyUpgrade(req, socket, head) {
+    if (!authOk(req)) { socket.destroy(); return; }
     (async () => {
       const port = await resolveTarget();
       if (!port) {

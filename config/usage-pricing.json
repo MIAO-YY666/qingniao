@@ -1,0 +1,11 @@
+{
+  "yuanPerMillionUncachedInput": 3.9985,
+  "note": "等效单价 = 用户报的当天账单 ÷ 当天未命中输入 token（百万）。账单可能含 B站值班/管理端等其它用途，且缓存读与输出被折算进单价，故它不是官方单价、数值偏高；只用于「今天比昨天贵多少」的相对趋势对比，不要当报价。",
+  "calibratedFrom": {
+    "day": "2026-11-06",
+    "yuan": 11,
+    "uncachedInput": 2751058
+  },
+  "updatedAt": "2026-11-06T08:28:56.888Z",
+  "warning": "按 2026-11-06 用户报的 ¥11 校准；若之后账单口径变化，用 node scripts/usage-report.mjs --calibrate <金额> 重新校准。"
+}

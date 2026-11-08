@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 侧载自用应用；QQ 包可见性已由下方 <queries> 单独声明，无需 QUERY_ALL_PACKAGES -->
+
+    <queries>
+        <package android:name="com.tencent.mobileqq" />
+    </queries>
+
+    <application
+        android:name=".App"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:theme="@style/Theme.BloomPocket"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 前台服务：承载 Agent 循环与任务队列 -->
+        <activity android:name=".SetupActivity" android:exported="false" />
+
+        <!-- ADB 配置通道（自用）：不导出，第三方应用无法发广播遥控本机。
+             注意：adb shell 属于 shell uid，同样送不进非导出组件（实测被系统 SKIPPED）。
+             需要 adb 派任务时改用 Activity 入口：
+               adb shell am start -n com.bloomhub.pocket/.MainActivity -e goal "打开设置看看"
+             下载/导入模型等配置请在 App 内点按完成。 -->
+        <receiver
+            android:name=".llm.AdbSetupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.bloomhub.pocket.ADB_DOWNLOAD" />
+                <action android:name="com.bloomhub.pocket.ADB_IMPORT" />
+                <action android:name="com.bloomhub.pocket.ADB_WIZARD_DONE" />
+                <action android:name="com.bloomhub.pocket.ADB_TASK" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".AgentService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|mediaProjection">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local AI agent executing user-requested automation tasks" />
+        </service>
+
+        <!-- 无障碍服务：读屏 + 执行点击/滑动/输入 -->
+        <service
+            android:name=".screen.ScreenAccess"
+            android:exported="false"
+            android:label="@string/a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- 通知监听：接 QQ 新消息触发回复任务 -->
+        <service
+            android:name=".notify.QqListener"
+            android:exported="false"
+            android:label="@string/notif_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

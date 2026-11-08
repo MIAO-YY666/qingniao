@@ -16,6 +16,45 @@ import path from 'node:path';
 
 const MAX_IMPRESSIONS = 60;
 
+// 印象分层（2026-11-06）：
+//   episode = 日常互动、说过的话、对一个人的印象与判断（要进上下文）
+//   log     = 平台流水账（日报推送记录等），可查但默认不注入 prompt
+// 旧数据没有 kind 字段，按文本特征推断，所以历史推送记录会自动被降级，
+// 不需要手工迁移数据。用户诉求：推送少记、日常与印象多记。
+const PUSH_LOG_RE = /给他推了日报|B站值班\s*\d{4}-\d{2}-\d{2}|平台代发|推送了日报|已推送日报/;
+function inferImpressionKind(imp) {
+  if (imp && (imp.kind === 'log' || imp.kind === 'episode')) return imp.kind;
+  const t = String((imp && imp.text) || imp || '');
+  return PUSH_LOG_RE.test(t) ? 'log' : 'episode';
+}
+
+// ---- P1：显著性（salience）----------------------------------------------
+// 不做不可靠的「模型有没有想起这条」自动检测。可信信号只有两个：
+//   ① 谁写的、写得多具体；② 同一件事后来又被写了一次（说明它反复被想起）。
+// 后者用中文 bigram Jaccard 做轻量相似判定，不需要分词库，也不会凭空造信号。
+function bigrams(text) {
+  const t = String(text || '').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').toLowerCase();
+  const out = new Set();
+  for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+  return out;
+}
+function similarity(a, b) {
+  const A = bigrams(a), B = bigrams(b);
+  if (!A.size || !B.size) return 0;
+  let hit = 0;
+  for (const x of A) if (B.has(x)) hit++;
+  // 重叠系数而非 Jaccard：中文长句的 Jaccard 天然偏低（实测同主题两句只有
+  // 0.32，无关句 0.05），用 |A∩B| / min(|A|,|B|) 区分度更稳（0.56 vs 0.10）。
+  return hit / Math.min(A.size, B.size);
+}
+function baseSalience(text, { source = 'agent', kind = 'episode' } = {}) {
+  if (kind === 'log') return 0.1;
+  let s = source === 'agent' ? 1.2 : 0.9;
+  // 带日期、数字、引号、原话的条目更具体，也更可能被以后用上
+  if (/\d{1,4}[-/月日年]|\d+\s*[条次岁点]|[「“"']/.test(String(text || ''))) s += 0.3;
+  return s;
+}
+
 export function createMemoryStore({ root, backupPath, log = () => {} }) {
   const dir = path.join(root, 'memory', 'people');
   const backupPeople = path.join(backupPath, 'people');
@@ -26,7 +65,9 @@ export function createMemoryStore({ root, backupPath, log = () => {} }) {
   }
 
   function fileFor(key) {
-    const safe = String(key).replace(/[^\w.-]+/g, '_');
+    // Unicode 字母/数字一律保留（中文昵称不再坍缩成同一个 bili-_.json），
+    // 只有真正非法的文件名字符才换成 _。与移动端 MemoryStore.kt 的清洗规则保持一致。
+    const safe = String(key).replace(/[^\p{L}\p{N}._-]+/gu, '_');
     return path.join(dir, `${safe}.json`);
   }
 
@@ -82,7 +123,12 @@ export function createMemoryStore({ root, backupPath, log = () => {} }) {
     if (!Array.isArray(person.identities)) person.identities = [person.key];
     if (!person.identities.includes(person.key)) person.identities.unshift(person.key);
     const file = fileFor(person.key);
-    fs.writeFileSync(file, JSON.stringify(person, null, 2), 'utf8');
+    // 原子写：先写唯一临时文件再 rename。
+    // 这里是多进程共享的文件（hub / bili-duty MCP / 桥接各一个实例），
+    // 直接 writeFileSync 会让并发的读者读到半个 JSON。
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(person, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
     // 项目外镜像备份
     fs.mkdirSync(backupPeople, { recursive: true });
     fs.copyFileSync(file, path.join(backupPeople, path.basename(file)));
@@ -124,16 +170,60 @@ export function createMemoryStore({ root, backupPath, log = () => {} }) {
     },
 
     // 追加一条印象（同一文本去重）；key 可以是任一身份
-    addImpression(key, text, { displayName = '', platform = '', source = 'agent' } = {}) {
+    addImpression(key, text, { displayName = '', platform = '', source = 'agent', kind = null, keepLatestOfKind = null, salience = null, supersedes = null } = {}) {
       const p = readOrCreate(key, { displayName, platform });
       const t = String(text || '').trim();
       if (!t) throw new Error('记忆内容不能为空');
       if (displayName && !p.displayName) p.displayName = displayName;
       if (platform && !p.platform) p.platform = platform;
-      if (!p.impressions.some((x) => x.text === t)) {
-        p.impressions.push({ at: new Date().toISOString(), text: t.slice(0, 500), source });
-        if (p.impressions.length > MAX_IMPRESSIONS) p.impressions = p.impressions.slice(-MAX_IMPRESSIONS);
+      const k = kind === 'log' || kind === 'episode' ? kind : 'episode';
+      const now = new Date().toISOString();
+      // 事实更新：旧条目标 superseded 而不是删掉，保留来源与时间，随时可回滚。
+      const supersedeList = Array.isArray(supersedes) ? supersedes : (supersedes ? [supersedes] : []);
+      if (supersedeList.length) {
+        for (const imp of p.impressions) {
+          if (supersedeList.some((s) => {
+            const q = String(s || '').trim();
+            return q && (imp.text === q || similarity(imp.text, q) > 0.7);
+          })) {
+            imp.superseded = true;
+            imp.supersededAt = now;
+          }
+        }
       }
+      if (!p.impressions.some((x) => x.text === t)) {
+        // 同一主题后来又被写了一次 → 这是最可靠的「被反复想起」信号，
+        // 给相关旧条目加 mentions / salience，不靠猜模型有没有看过它。
+        for (const imp of p.impressions) {
+          if (imp.superseded || inferImpressionKind(imp) === 'log') continue;
+          if (similarity(imp.text, t) >= 0.5) {
+            imp.mentions = Number(imp.mentions || 0) + 1;
+            imp.lastMentionedAt = now;
+            imp.salience = Math.min(3, Number(imp.salience ?? baseSalience(imp.text, imp)) + 0.1);
+          }
+        }
+        p.impressions.push({
+          at: now, text: t.slice(0, 500), source, kind: k,
+          // 注意：Number(null) === 0，不能用 Number.isFinite(Number(x)) 判断"有没有传"
+          salience: (salience != null && Number.isFinite(Number(salience)))
+            ? Number(salience) : baseSalience(t, { source, kind: k }),
+          mentions: 0, lastMentionedAt: now
+        });
+      }
+      // 滚动写入：同一类只保留最近 N 条。平台推送记录用它，避免「一天一条
+      // 流水账」把 60 条容量和 12 条注入窗口占满，同时仍能被 memory_read 查到。
+      const keepN = Number(keepLatestOfKind);
+      if (Number.isFinite(keepN) && keepN > 0) {
+        const idx = [];
+        for (let i = p.impressions.length - 1; i >= 0; i--) {
+          if (inferImpressionKind(p.impressions[i]) === k) idx.push(i);
+        }
+        if (idx.length > keepN) {
+          const drop = new Set(idx.slice(keepN));
+          p.impressions = p.impressions.filter((_, i) => !drop.has(i));
+        }
+      }
+      if (p.impressions.length > MAX_IMPRESSIONS) p.impressions = p.impressions.slice(-MAX_IMPRESSIONS);
       return writePerson(p);
     },
 
@@ -191,19 +281,37 @@ export function createMemoryStore({ root, backupPath, log = () => {} }) {
     },
 
     // 注入用：紧凑文本块（最近 N 条），无记忆返回 ''
-    renderForPrompt(key, { max = 5, chars = 600 } = {}) {
+    // max/chars 放宽过一次：默认 5 条 / 600 字符只能塞进最近几天的碎片，
+    // 主人的长期背景（项目、习惯、雷点）会被挤掉，表现为“她记不住我是谁”。
+    // 2026-11-06 再加一层：log 类（推送流水账）默认不注入，只保留日常/印象。
+    // 默认取全量（MAX_IMPRESSIONS=60 条）。2026-11-06 实测三个人加起来才
+    // 2462 字符，原来的 12 条/2000 字上限根本没被触发；放宽后当前数据下
+    // 成本增量接近 0。chars 只是安全阀，防止 60 条 × 500 字把唤醒 prompt 撑爆。
+    renderForPrompt(key, { max = MAX_IMPRESSIONS, chars = 6000, includeLog = false } = {}) {
       const p = resolve(key);
       if (!p || !p.impressions?.length) return '';
       const name = p.displayName || p.key;
-      const ids = (p.identities?.length ?? 0) > 1 ? `；跨平台身份：${p.identities.join(' / ')}` : '';
-      const lines = p.impressions.slice(-max).map((x) => `- ${x.text}`);
+      const ids = (p.identities?.length ?? 0) > 1 ? `（跨平台身份：${p.identities.join(' / ')}）` : '';
+      const pool = p.impressions.filter((x) => !x.superseded && (includeLog || inferImpressionKind(x) !== 'log'));
+      if (!pool.length) return '';
+      const now = Date.now();
+      // 按 salience + 近因 + 被重复提及次数挑，但输出仍按时间正序，保留叙事感。
+      const scored = pool.map((x, i) => {
+        const sal = Number.isFinite(Number(x.salience)) ? Number(x.salience) : baseSalience(x.text, x);
+        const ageDays = Math.max(0, (now - (Date.parse(x.at) || now)) / 86400000);
+        const recency = Math.max(0, 0.5 - ageDays / 60);
+        const mentions = Math.min(2, Math.log2(1 + Number(x.mentions || 0)) * 0.3);
+        return { x, i, score: sal + recency + mentions };
+      });
+      scored.sort((a, b) => b.score - a.score || b.i - a.i);
+      const lines = scored.slice(0, max).sort((a, b) => a.i - b.i).map(({ x }) => `- ${x.text}`);
       let block = `【记忆·关于${name}】${ids}（你对这个人的长期印象与互动史，供参考，不必复述）\n${lines.join('\n')}`;
       if (block.length > chars) block = block.slice(0, chars) + '…';
       return block;
     },
 
     // 跨聊天记忆：在其他会话（尤其群聊 group-*）的印象里，提到 name 的条目
-    relatedFor(name, { max = 3, chars = 450 } = {}) {
+    relatedFor(name, { max = 5, chars = 900 } = {}) {
       const kw = String(name || '').trim();
       if (!kw || kw.length < 2) return '';
       const hits = [];

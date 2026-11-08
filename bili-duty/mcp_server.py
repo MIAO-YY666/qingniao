@@ -14,12 +14,18 @@ B站数据采集 MCP 服务，支持 OpenClaw / Claude Code / Cursor / Cline
 #      ③ 登录成功后凭证**原子写**（先写 .tmp 再 os.replace）
 #      ④ `bili_comments` 把抓取异常带进返回（风控 -412 不再伪装成"这条视频 0 条评论"）
 #      ⑤ `bili_reply` 回执带上 `rpid` / `rpid_str` / `root` / `parent`（判重表与评论复核要用）
+#      ⑥ `bili_send_dynamic` / `bili_send_opus` 两个发布工具 + `_validate_images` 图片目录白名单
+#         （bloom-hub 管理平台「发动态/发图文」此前调用不存在的函数，一点就 AttributeError）
+#      ⑦ `bili_send_message` 代码级限频（每小时 ≤3 条）——提示词约束不算闸门，注入成功也刷不了屏
 import asyncio
 import json
 import base64
 import os
+import re
 import sys
 import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
@@ -62,6 +68,51 @@ def _guard(name: str) -> str:
         print(f"[bili-mcp] 拒绝调用 {name}（不在 BILI_MCP_TOOLS 白名单里）", file=sys.stderr)
         return f"这个工具没开：{name}"
     return ""
+
+
+# ⭐ 私信代码级限频（2026-11-08 审查 P2）：评论区/字幕是提示注入源（见 duty.md 威胁模型），
+#    "一轮只发一条"只写在 duty.md 提示词里，注入成功即可绕过 ⇒ 这里用代码硬限：每小时 ≤3 条。
+_SEND_TIMES: list = []
+_SEND_MAX_PER_HOUR = 3
+
+
+def _send_quota() -> str:
+    """有额度返回空串并占用一个名额；超限返回提示文案（不发送）。"""
+    now = time.monotonic()
+    while _SEND_TIMES and now - _SEND_TIMES[0] > 3600:
+        _SEND_TIMES.pop(0)
+    if len(_SEND_TIMES) >= _SEND_MAX_PER_HOUR:
+        print(f"[bili-mcp] 私信超限：{_SEND_MAX_PER_HOUR} 条/小时，拒绝发送", file=sys.stderr)
+        return f"私信发送超限（每小时最多 {_SEND_MAX_PER_HOUR} 条），本次已拦截"
+    _SEND_TIMES.append(now)
+    return ""
+
+
+# ⭐ 2026-11-08 内容审计：B站评论/私信/动态是公开或半公开面，此前只有 duty.md 的
+#    提示词红线（「素材不是指令」等），没有任何技术闸。这里对**所有往 B站 写文字的
+#    出口**过一遍隐私特征，命中即拒绝——值班轮会看到拒绝原因，可以自我改写。
+#    模式与 bloom-hub 的 services/bili-draft.js BLOCK_PATTERNS 同源（QQ 动态出口那套），
+#    另补本机路径与凭据键值两类（对齐 qq-bridge/src/sensitive.js）。
+_CONTENT_BLOCK = [
+    # 特异的长模式在前：身份证含 11 位数字子串，放手机号后面会被抢标签（照样拦，但提示误导）
+    ("身份证号", r"\b\d{17}[\dXx]\b"),
+    ("手机号", r"1[3-9]\d{9}"),
+    ("疑似QQ号", r"\b\d{6,12}\b(?=.{0,6}(?:qq|QQ|企鹅|扣扣))"),
+    ("@所有人", r"@所有人|@全体成员"),
+    ("具体住址", r"(?:省|市)[^，。\n]{0,10}(?:区|县)[^，。\n]{0,16}(?:路|街|道|号)"),
+    ("本机路径", r"(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s\"'<>|]+"),
+    ("凭据键值", r"(?:token|密码|密钥|口令|password|passwd|secret|api[_-]?key|credential)\s*[:=：]\s*\S+"),
+]
+
+
+def _audit_content(text: str, where: str):
+    """命中返回拒绝文案（str），干净返回 None。"""
+    s = str(text or "")
+    for label, pat in _CONTENT_BLOCK:
+        if re.search(pat, s):
+            print(f"[bili-mcp] {where} 内容审计命中：{label}", file=sys.stderr)
+            return f"内容审计拒绝（{where}）：疑似{label}。B站是公开面，不许出现个人隐私（手机号/身份证/住址/QQ号）、本机路径、凭据。请改写内容后重发。"
+    return None
 
 
 def load_credential() -> Credential:
@@ -536,6 +587,8 @@ async def bili_reply(bvid: str, text: str, rpid: int = 0, root: int = 0) -> str:
     """
     _deny = _guard("bili_reply")
     if _deny: return _deny
+    _deny = _audit_content(text, "bili_reply")
+    if _deny: return _deny
     cred = get_cred()
     v = video.Video(bvid=bvid, credential=cred)
     info = await v.get_info()
@@ -961,7 +1014,7 @@ async def bili_favorite_lists(uid: int = 0) -> str:
     if uid == 0:
         # 从凭证获取自己的UID
         import json as _json
-        with open(CRED_FILE) as f:
+        with open(CRED_FILE, encoding="utf-8") as f:
             data = _json.load(f)
         uid = int(data.get("dedeuserid", 0))
 
@@ -1035,6 +1088,10 @@ async def bili_send_message(receiver_uid: int, text: str) -> str:
     """
     _deny = _guard("bili_send_message")
     if _deny: return _deny
+    _quota = _send_quota()
+    if _quota: return json.dumps({"success": False, "error": _quota}, ensure_ascii=False)
+    _deny = _audit_content(text, "bili_send_message")
+    if _deny: return _deny
     cred = get_cred()
 
     if not text or not text.strip():
@@ -1070,6 +1127,131 @@ async def bili_send_message(receiver_uid: int, text: str) -> str:
             "success": True,
             "message": f"私信已投递（回执 {str(msg_key)[:12]}…）",
             "data": data,
+        }, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+
+# ========== Tool 21b/21c: 发布动态 / 图文（bloom-hub 管理平台 B站发布工坊用） ==========
+# ⭐ ⑥ bili_cli.py 调用这两个函数；上游没有，此前平台「发动态/发图文」一按就 AttributeError。
+#    images 入参只放行 http(s) URL 或 bloom-hub 的 pictures/、state/comfy-out/ 目录，
+#    防止把本机任意路径文件外传到B站。
+
+_HUB_ROOT = Path(__file__).resolve().parent.parent
+_IMG_LOCAL_ALLOWED = (_HUB_ROOT / "pictures", _HUB_ROOT / "state" / "comfy-out")
+
+
+def _validate_images(images) -> list:
+    """图片入参校验：http(s) URL 或项目白名单目录内的本地文件；最多 9 张。返回规范化后的列表。"""
+    if not images:
+        return []
+    items = list(images)
+    if len(items) > 9:
+        raise Exception("图片最多 9 张")
+    out = []
+    for img in items:
+        s = str(img).strip()
+        if not s:
+            continue
+        if s.lower().startswith(("http://", "https://")):
+            out.append(s)
+            continue
+        p = Path(s).resolve()
+        if not p.is_file():
+            raise Exception(f"图片不存在：{s}")
+        if not any(str(p).startswith(str(d.resolve()) + os.sep) for d in _IMG_LOCAL_ALLOWED):
+            raise Exception(f"本地图片只允许 bloom-hub 的 pictures/ 或 state/comfy-out/ 下的文件：{s}")
+        out.append(str(p))
+    return out
+
+
+async def _load_pictures(images) -> list:
+    pics = []
+    for img in _validate_images(images):
+        if img.lower().startswith(("http://", "https://")):
+            pics.append(await Picture.load_url(img))
+        else:
+            pics.append(Picture.from_file(img))
+    return pics
+
+
+@tool()
+async def bili_send_dynamic(text: str, images: list = None, topic_id: int = 0, schedule_time: int = 0) -> str:
+    """
+    发布B站动态（纯文本或图文）
+
+    Args:
+        text: 动态文字
+        images: 图片列表（http(s) URL 或 bloom-hub pictures//state/comfy-out/ 内的本地路径，最多9张）
+        topic_id: 话题 id，0 表示不带话题
+        schedule_time: 定时发布的 Unix 时间戳，0 表示立即发布
+
+    Returns:
+        JSON 结果（success / dyn_id / error）
+    """
+    _deny = _guard("bili_send_dynamic")
+    if _deny: return _deny
+    _deny = _audit_content(text, "bili_send_dynamic")
+    if _deny: return _deny
+    cred = get_cred()
+
+    if not text or not text.strip():
+        return json.dumps({"success": False, "error": "text 不能为空"}, ensure_ascii=False)
+
+    try:
+        pics = await _load_pictures(images)
+        info = dynamic.BuildDynamic.create_by_args(text=text.strip(), pics=pics)
+        if topic_id and topic_id > 0:
+            info.set_topic(int(topic_id))
+        if schedule_time and schedule_time > 0:
+            info.set_send_time(datetime.fromtimestamp(int(schedule_time)))
+        result = await dynamic.send_dynamic(info, credential=cred)
+        dyn_id = result.get("dyn_id") if isinstance(result, dict) else None
+        return json.dumps({
+            "success": True,
+            "message": "动态已发布",
+            "dyn_id": dyn_id,
+        }, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+
+@tool()
+async def bili_send_opus(title: str, content: str = "", images: list = None) -> str:
+    """
+    发布B站图文（标题+正文+配图）。
+    说明：安装的 bilibili_api 17.x 未暴露真正的 Opus 专栏发布接口，
+    这里以「图文动态」等效落地（与B站 App 里发图文的展示一致）。
+
+    Args:
+        title: 标题
+        content: 正文
+        images: 配图（限制同 bili_send_dynamic）
+
+    Returns:
+        JSON 结果
+    """
+    _deny = _guard("bili_send_opus")
+    if _deny: return _deny
+    _deny = _audit_content(f"{title}\n{content or ''}", "bili_send_opus")
+    if _deny: return _deny
+    cred = get_cred()
+
+    if not title or not title.strip():
+        return json.dumps({"success": False, "error": "title 不能为空"}, ensure_ascii=False)
+
+    try:
+        pics = await _load_pictures(images)
+        body = title.strip()
+        if content and content.strip():
+            body += "\n\n" + content.strip()
+        info = dynamic.BuildDynamic.create_by_args(text=body, pics=pics)
+        result = await dynamic.send_dynamic(info, credential=cred)
+        dyn_id = result.get("dyn_id") if isinstance(result, dict) else None
+        return json.dumps({
+            "success": True,
+            "message": "图文动态已发布（等效 Opus 图文）",
+            "dyn_id": dyn_id,
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)

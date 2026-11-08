@@ -1,11 +1,11 @@
 # Restart DSH (dsh web), detaching from the DSH process tree.
 #
 # *** DEPRECATED / DISABLED (2026-10-24) ***
-# 桥接已不再连接独立 `dsh web`：bloom-hub 的 dsh-link 服务监听固定端口 3080，
+# 桥接已不再连接独立 `dsh web`：qingniao 的 dsh-link 服务监听固定端口 3080，
 # 自动转发到 DeepSeek Harness 桌面客户端的内嵌 web（动态端口）。
 # 本脚本会杀掉 3080 的监听进程 —— 那现在是我们自己的转发层 —— 并重新下载
 # 已删除的 npx 缓存，所以已直接禁用。
-# DSH 没起来时请：启动 DeepSeek Harness 桌面客户端（或双击 bloom-hub\start-all.bat），
+# DSH 没起来时请：启动 DeepSeek Harness 桌面客户端（或双击 start-all.bat），
 # dsh-link 会自动发现它；保活任务 BloomHub-KeepAlive 也会自动拉起。
 #
 # v2: the v1 probe used Get-NetTCPConnection, which is unreliable on this host
@@ -17,10 +17,10 @@
 #   node D:\npm-global\node_modules\npm\bin\npx-cli.js @deepseek-ai/dsh web
 
 $ErrorActionPreference = 'Continue'
-Write-Host '此脚本已停用：桥接现在经 bloom-hub 的 dsh-link(:3080) 连接 DeepSeek Harness 桌面客户端。'
-Write-Host '若 DSH 未运行，直接启动桌面客户端即可（或双击 bloom-hub\start-all.bat）。'
+Write-Host '此脚本已停用：桥接现在经 qingniao 的 dsh-link(:3080) 连接 DeepSeek Harness 桌面客户端。'
+Write-Host '若 DSH 未运行，直接启动桌面客户端即可（或双击 start-all.bat）。'
 exit 0
-$logDir = 'D:\harnessWorkspace\qq-bridge\state'
+$logDir = '$PSScriptRoot\..\state'
 $log = Join-Path $logDir 'dsh-restart.log'
 
 function Write-Log([string]$message) {
@@ -60,9 +60,9 @@ $npx = 'D:\npm-global\node_modules\npm\bin\npx-cli.js'
 $out = Join-Path $logDir 'dsh-restart.out.log'
 $err = Join-Path $logDir 'dsh-restart.err.log'
 try {
-  $proc = Start-Process -FilePath 'D:\nodejs\node.exe' `
+  $proc = Start-Process -FilePath (Get-Command node -ErrorAction SilentlyContinue).Source `
     -ArgumentList @($npx, '@deepseek-ai/dsh', 'web') `
-    -WorkingDirectory 'D:\harnessWorkspace' `
+    -WorkingDirectory (Split-Path -Parent $PSScriptRoot) `
     -RedirectStandardOutput $out -RedirectStandardError $err `
     -WindowStyle Hidden -PassThru
   Write-Log ("relaunched DSH, npx pid = {0}" -f $proc.Id)
